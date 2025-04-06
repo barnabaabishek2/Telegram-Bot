@@ -20,10 +20,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-BOT_TOKEN = "8047171670:AAE6F8uClZBXD33HozUeAUAe2USxNWMyu50"
+BOT_TOKEN = "7204884576:AAGLHvP_ALG_uWVG8YpFxRCvEDq3QXk9Kjw"
 API_ID = 24360857
 API_HASH = "0924b59c45bf69cdfafd14188fb1b778"
-OWNER_IDS = [5891854177, 6611568855]
+OWNER_IDS = [5891854177]
 SHORTENER_API = "d2d9a81c236ad681edfbb260cb315628df46cc38"
 SHORTENER_URL = "https://api.gplinks.com/api"
 
@@ -41,7 +41,7 @@ try:
     
     cred = credentials.Certificate(json.loads(firebase_config))
     firebase_admin.initialize_app(cred, {
-        "databaseURL": "https://telegrambotdb-1895e-default-rtdb.firebaseio.com/"
+        "databaseURL": "https://my-telegram-bot-127da-default-rtdb.firebaseio.com"
     })
     logger.info("Firebase initialized successfully!")
 except Exception as e:
@@ -170,8 +170,8 @@ async def start(client, message):
     wait_msg = await message.reply("⏳ Please wait while we process your request...")
     
     has_joined = await is_user_joined(client, user.id)
-    image_id = "AgACAgUAAxkBAAIB5GfyOawwpZD9TlziQtEHwccx98qsAAIzwjEbs7aQV_IRtSBrISN8AAgBAAMCAAN4AAceBA"
-    image_id1 = "AgACAgUAAxkBAAICMWfyPdeBpVdBUzcaTvivBon4a-32AAI7wjEbs7aQVxPJtV8TqXdUAAgBAAMCAAN4AAceBA"
+    image_id = "AgACAgUAAxkBAAMHZ_Kk0DMGWHUhuZrsCD58xrl1pf4AAjPCMRuztpBXjOL21dg7BiUACAEAAwIAA3gABx4E"
+    image_id1 = "AgACAgUAAxkBAAMHZ_Kk0DMGWHUhuZrsCD58xrl1pf4AAjPCMRuztpBXjOL21dg7BiUACAEAAwIAA3gABx4E"
     
     if len(message.command) == 1:
         if not has_joined:
