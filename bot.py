@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = "7204884576:AAGLHvP_ALG_uWVG8YpFxRCvEDq3QXk9Kjw"
 API_ID = 24360857
 API_HASH = "0924b59c45bf69cdfafd14188fb1b778"
-OWNER_IDS = [5891854177]
+OWNER_IDS = 5891854177
 SHORTENER_API = "d2d9a81c236ad681edfbb260cb315628df46cc38"
 SHORTENER_URL = "https://api.gplinks.com/api"
 
