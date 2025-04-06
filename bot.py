@@ -171,7 +171,7 @@ async def start(client, message):
     
     has_joined = await is_user_joined(client, user.id)
     image_id = "AgACAgUAAxkBAAMHZ_Kk0DMGWHUhuZrsCD58xrl1pf4AAjPCMRuztpBXjOL21dg7BiUACAEAAwIAA3gABx4E"
-    image_id1 = "AgACAgUAAxkBAAMHZ_Kk0DMGWHUhuZrsCD58xrl1pf4AAjPCMRuztpBXjOL21dg7BiUACAEAAwIAA3gABx4E"
+    image_id1 = "AgACAgUAAxkBAAMJZ_Kk1twpVZuYcbLXfSL_vHsrt3EAAjvCMRuztpBXYBoHteeY64QACAEAAwIAA3gABx4E"
     
     if len(message.command) == 1:
         if not has_joined:
