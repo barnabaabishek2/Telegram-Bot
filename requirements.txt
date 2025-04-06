@@ -1,3 +1,6 @@
 pyrogram
 tgcrypto
 firebase-admin
+pyrogram==2.0.106
+firebase-admin==6.2.0
+requests==2.31.0
