@@ -3,6 +3,7 @@ import random
 import string
 import json
 import os
+import time
 import firebase_admin
 from firebase_admin import credentials, db
 from pyrogram import Client, filters, enums
@@ -11,6 +12,7 @@ import logging
 from datetime import datetime
 import requests
 import urllib.parse
+from pyrogram.errors import FloodWait
 
 # Configure logging
 logging.basicConfig(
@@ -20,18 +22,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-BOT_TOKEN = "7204884576:AAGLHvP_ALG_uWVG8YpFxRCvEDq3QXk9Kjw"
-API_ID = 24360857
-API_HASH = "0924b59c45bf69cdfafd14188fb1b778"
-OWNER_IDS = [5891854177]
-SHORTENER_API = "d2d9a81c236ad681edfbb260cb315628df46cc38"
-SHORTENER_URL = "https://api.gplinks.com/api"
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7204884576:AAGLHvP_ALG_uWVG8YpFxRCvEDq3QXk9Kjw")
+API_ID = int(os.getenv("API_ID", "24360857"))
+API_HASH = os.getenv("API_HASH", "0924b59c45bf69cdfafd14188fb1b778")
+OWNER_IDS = [int(x) for x in os.getenv("OWNER_IDS", "5891854177").split(",")]
+SHORTENER_API = os.getenv("SHORTENER_API", "d2d9a81c236ad681edfbb260cb315628df46cc38")
+SHORTENER_URL = os.getenv("SHORTENER_URL", "https://api.gplinks.com/api")
 
-# Channel information (simplified to just one channel)
-CHANNEL_USERNAME = "@solo_leveling_manhwa_tamil"
-CHANNEL_ID = -1002662584633
-CHANNEL_LINK = "https://t.me/solo_leveling_manhwa_tamil"
-SOURCE_CHANNEL = "https://t.me/mangas_manhwas_tamil"
+# Channel information
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@solo_leveling_manhwa_tamil")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1002662584633"))
+CHANNEL_LINK = os.getenv("CHANNEL_LINK", "https://t.me/solo_leveling_manhwa_tamil")
+SOURCE_CHANNEL = os.getenv("SOURCE_CHANNEL", "https://t.me/mangas_manhwas_tamil")
 
 # Initialize Firebase
 try:
@@ -48,7 +50,14 @@ except Exception as e:
     logger.error(f"Firebase initialization error: {e}")
     raise
 
-app = Client("tdafilesharebot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
+app = Client(
+    "tdafilesharebot",
+    bot_token=BOT_TOKEN,
+    api_id=API_ID,
+    api_hash=API_HASH,
+    workers=100,
+    sleep_threshold=10
+)
 
 # User state management
 user_states = {}
@@ -159,14 +168,13 @@ def shorten_url(long_url):
     except Exception as e:
         logger.error(f"Unexpected error shortening URL: {e}")
         return None
-        
+
 # Command Handlers
 @app.on_message(filters.command("start"))
 async def start(client, message):
     user = message.from_user
     await store_user_info(user.id, user.username, user.first_name, user.last_name)
     
-    # Show "Please wait" message
     wait_msg = await message.reply("⏳ Please wait while we process your request...")
     
     has_joined = await is_user_joined(client, user.id)
@@ -298,9 +306,6 @@ async def handle_getfile(client, callback_query):
     
     await asyncio.sleep(5)
     await wait_msg.delete()
-
-# [Rest of the code remains the same as your original...]
-# Only the channel-related parts were modified, other functions remain unchanged
 
 @app.on_message(filters.command("batch") & filters.user(OWNER_IDS))
 async def batch_command(client, message):
@@ -542,19 +547,55 @@ async def media_text_handler(client, message):
             await message.reply(reply_text)
 
 async def set_commands():
-    await app.set_bot_commands([
+    commands = [
         BotCommand("start", "Show start message"),
         BotCommand("batch", "Upload files (Owner)"),
         BotCommand("broadcast", "Send to all users (Owner)"),
         BotCommand("users", "List users (Owner)"),
         BotCommand("shortener", "Shorten URLs using GPLinks (Owner)")
-    ])
+    ]
+    try:
+        await app.set_bot_commands(commands)
+        logger.info("Bot commands set successfully!")
+    except Exception as e:
+        logger.error(f"Error setting bot commands: {e}")
 
-app.start()
-print("Bot started!")
-app.loop.run_until_complete(set_commands())
+async def run_bot():
+    retry_count = 0
+    max_retries = 5
+    
+    while retry_count < max_retries:
+        try:
+            await app.start()
+            logger.info("Bot started successfully!")
+            await set_commands()
+            
+            # Keep the bot running
+            while True:
+                await asyncio.sleep(3600)  # Sleep for 1 hour
+            
+        except FloodWait as e:
+            retry_count += 1
+            wait_time = e.value + 10
+            logger.error(f"FloodWait: Need to wait {wait_time} seconds (Attempt {retry_count}/{max_retries})")
+            time.sleep(wait_time)
+        except Exception as e:
+            retry_count += 1
+            logger.error(f"Error (Attempt {retry_count}/{max_retries}): {e}")
+            time.sleep(10)
+        finally:
+            if await app.is_initialized:
+                await app.stop()
+    
+    logger.error("Max retries reached. Exiting...")
 
-try:
-    asyncio.get_event_loop().run_forever()
-except KeyboardInterrupt:
-    print("Bot stopped!")
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(run_bot())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+    finally:
+        loop.close()
