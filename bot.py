@@ -22,18 +22,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-BOT_TOKEN = os.getenv("BOT_TOKEN", "7204884576:AAGLHvP_ALG_uWVG8YpFxRCvEDq3QXk9Kjw")
-API_ID = int(os.getenv("API_ID", "24360857"))
-API_HASH = os.getenv("API_HASH", "0924b59c45bf69cdfafd14188fb1b778")
-OWNER_IDS = [int(x) for x in os.getenv("OWNER_IDS", "5891854177").split(",")]
-SHORTENER_API = os.getenv("SHORTENER_API", "d2d9a81c236ad681edfbb260cb315628df46cc38")
-SHORTENER_URL = os.getenv("SHORTENER_URL", "https://api.gplinks.com/api")
+BOT_TOKEN = "7204884576:AAGLHvP_ALG_uWVG8YpFxRCvEDq3QXk9Kjw"
+API_ID = 24360857
+API_HASH = "0924b59c45bf69cdfafd14188fb1b778"
+OWNER_IDS = [5891854177]
+SHORTENER_API = "d2d9a81c236ad681edfbb260cb315628df46cc38"
+SHORTENER_URL = "https://api.gplinks.com/api"
 
-# Channel information
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@solo_leveling_manhwa_tamil")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1002662584633"))
-CHANNEL_LINK = os.getenv("CHANNEL_LINK", "https://t.me/solo_leveling_manhwa_tamil")
-SOURCE_CHANNEL = os.getenv("SOURCE_CHANNEL", "https://t.me/mangas_manhwas_tamil")
+# Channel information (simplified to just one channel)
+CHANNEL_USERNAME = "@solo_leveling_manhwa_tamil"
+CHANNEL_ID = -1002662584633
+CHANNEL_LINK = "https://t.me/solo_leveling_manhwa_tamil"
+SOURCE_CHANNEL = "https://t.me/mangas_manhwas_tamil"
 
 # Initialize Firebase
 try:
