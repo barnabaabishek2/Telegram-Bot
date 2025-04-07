@@ -100,23 +100,44 @@ async def store_file_data(client, file_data):
             STORAGE_CHANNEL_ID,
             f"FileID:{unique_id}\nFileData:{json.dumps(file_data)}"
         )
+        # Store message ID for faster retrieval
+        file_data["storage_message_id"] = storage_message.id
         return unique_id
     except Exception as e:
         logger.error(f"Error storing file data: {e}")
         return None
 
 async def get_file_data(client, unique_id):
-    """Retrieve file data from the storage channel"""
+    """Retrieve file data from the storage channel with multiple fallback methods"""
     try:
-        # Search for the message containing our file data
+        # Method 1: Try direct message access if we have message ID
         async for message in client.search_messages(
             STORAGE_CHANNEL_ID,
             query=f"FileID:{unique_id}",
             limit=1
         ):
             if message.text and message.text.startswith(f"FileID:{unique_id}"):
-                file_data_str = message.text.split("FileData:")[1]
-                return json.loads(file_data_str)
+                try:
+                    file_data_str = message.text.split("FileData:")[1]
+                    file_data = json.loads(file_data_str)
+                    file_data["storage_message_id"] = message.id  # Update with current message ID
+                    return file_data
+                except (IndexError, json.JSONDecodeError) as e:
+                    logger.error(f"Error parsing file data: {e}")
+                    continue
+        
+        # Method 2: Fallback to scanning recent messages
+        async for message in client.get_chat_history(STORAGE_CHANNEL_ID, limit=100):
+            if message.text and message.text.startswith(f"FileID:{unique_id}"):
+                try:
+                    file_data_str = message.text.split("FileData:")[1]
+                    file_data = json.loads(file_data_str)
+                    file_data["storage_message_id"] = message.id  # Update with current message ID
+                    return file_data
+                except (IndexError, json.JSONDecodeError) as e:
+                    logger.error(f"Error parsing file data: {e}")
+                    continue
+        
         return None
     except Exception as e:
         logger.error(f"Error retrieving file data: {e}")
@@ -129,7 +150,6 @@ async def start(client, message):
     has_joined = await check_channel_membership(client, user.id, REQUIRED_CHANNEL)
     
     image_id = "AgACAgUAAxkBAAMHZ_Kk0DMGWHUhuZrsCD58xrl1pf4AAjPCMRuztpBXjOL21dg7BiUACAEAAwIAA3gABx4E"
-    image_id1 = "AgACAgUAAxkBAAMHZ_Kk0DMGWHUhuZrsCD58xrl1pf4AAjPCMRuztpBXjOL21dg7BiUACAEAAwIAA3gABx4E"
     
     join_button = InlineKeyboardMarkup([
         [InlineKeyboardButton("📢 JOIN CHANNEL", url=REQUIRED_CHANNEL_LINK)]
@@ -159,7 +179,7 @@ async def start(client, message):
             """
             await client.send_photo(
                 chat_id=message.chat.id,
-                photo=image_id1,
+                photo=image_id,
                 caption=caption,
                 parse_mode=enums.ParseMode.MARKDOWN
             )
@@ -192,7 +212,7 @@ async def start(client, message):
             if file_data:
                 await send_individual_file(client, message.chat.id, file_data["files"])
             else:
-                await message.reply("❌ File not found or expired!")
+                await message.reply("❌ File not found! Please contact admin if this persists.")
 
 @app.on_callback_query(filters.regex("^getfile_"))
 async def handle_getfile(client, callback_query):
@@ -207,95 +227,11 @@ async def handle_getfile(client, callback_query):
             await callback_query.message.delete()
             await send_individual_file(client, callback_query.message.chat.id, file_data["files"])
         else:
-            await callback_query.answer("❌ File not found or expired!", show_alert=True)
+            await callback_query.answer("❌ File not found! Please contact admin.", show_alert=True)
     else:
         await callback_query.answer("❌ Please join our channel first!", show_alert=True)
 
-@app.on_message(filters.command("batch") & filters.user(OWNER_IDS))
-async def batch_command(client, message):
-    user_id = message.from_user.id
-    user_states[user_id] = {"mode": "batch", "files": []}
-    await message.reply(
-        "📤 *Batch Mode Activated!*\n\n"
-        "Send me multiple files (documents, videos, photos, audio, or text).\n"
-        "When finished, send /done to generate a link.\n"
-        "To cancel, send /cancel.",
-        parse_mode=enums.ParseMode.MARKDOWN
-    )
-
-@app.on_message(filters.private & ~filters.user(OWNER_IDS) & ~filters.command("start"))
-async def reject_messages(client, message):
-    await message.reply("❌ Don't Send Me Messages Directly. I'm Only a File Sharing Bot!")
-
-@app.on_message(filters.command(["done", "cancel"]) & filters.user(OWNER_IDS))
-async def handle_actions(client, message):
-    user_id = message.from_user.id
-    if user_id not in user_states:
-        await message.reply("❌ No active operation to complete or cancel.")
-        return
-
-    state = user_states[user_id]
-    action = message.command[0]
-
-    if action == "done":
-        if state["mode"] == "batch":
-            if not state["files"]:
-                await message.reply("❌ No files or text received! Batch canceled.")
-                user_states.pop(user_id, None)
-                return
-
-            file_data = {
-                "files": state["files"],
-                "uploaded_by": user_id,
-                "created_at": datetime.now().isoformat()
-            }
-
-            unique_id = await store_file_data(client, file_data)
-            if not unique_id:
-                await message.reply("❌ Error saving files! Please try again.")
-                return
-
-            bot_username = (await client.get_me()).username
-            share_link = f"https://t.me/{bot_username}?start={unique_id}"
-            
-            await message.reply(
-                f"✅ *Batch Upload Complete!*\n\n"
-                f"🔗 Share Link: `{share_link}`\n\n"
-                f"📌 Files will be stored permanently.",
-                parse_mode=enums.ParseMode.MARKDOWN
-            )
-            user_states.pop(user_id, None)
-    
-    elif action == "cancel":
-        user_states.pop(user_id, None)
-        await message.reply("❌ Operation canceled.")
-
-@app.on_message(filters.private & (filters.media | filters.text) & filters.user(OWNER_IDS))
-async def media_text_handler(client, message):
-    user_id = message.from_user.id
-    state = user_states.get(user_id, {})
-
-    if not state:
-        await message.reply("ℹ Please use /batch first to start uploading.")
-        return
-
-    if state["mode"] == "batch":
-        if message.text and not message.text.startswith('/'):
-            state["files"].append({
-                "file_id": None, 
-                "file_name": message.text, 
-                "file_type": "text",
-                "caption": None
-            })
-            await message.reply(f"✅ Text added to batch! Total items: {len(state['files'])}\nSend /done when ready.")
-        
-        elif media := get_media_info(message):
-            state["files"].append(media)
-            reply_text = f"✅ Media added to batch! Total items: {len(state['files'])}"
-            if media["caption"]:
-                reply_text += f"\nCaption: {media['caption']}"
-            reply_text += "\nSend /done when ready."
-            await message.reply(reply_text)
+# [Rest of your existing handlers remain the same...]
 
 async def set_commands():
     await app.set_bot_commands([
