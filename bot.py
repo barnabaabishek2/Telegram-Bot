@@ -31,8 +31,8 @@ CHANNEL_USERNAME = "@solo_leveling_manhwa_tamil"
 CHANNEL_ID = -1002662584633
 CHANNEL_LINK = "https://t.me/solo_leveling_manhwa_tamil"
 SOURCE_CHANNEL = "https://t.me/mangas_manhwas_tamil"
-TUTORIAL_CHANNEL = "https://t.me/tutorial_channel"
-JOIN_CHANNELS_LINK = "https://t.me/join_channels_folder"
+TUTORIAL_CHANNEL = "https://t.me/your_tutorial_channel"
+JOIN_CHANNELS_LINK = "https://t.me/your_channels_folder"
 
 # Initialize Firebase
 try:
@@ -42,14 +42,14 @@ try:
     
     cred = credentials.Certificate(json.loads(firebase_config))
     firebase_admin.initialize_app(cred, {
-        "databaseURL": "https://your-firebase-app.firebaseio.com"
+        "databaseURL": "https://movie-or-anime-search-bot-default-rtdb.firebaseio.com"
     })
     logger.info("Firebase initialized successfully!")
 except Exception as e:
     logger.error(f"Firebase initialization error: {e}")
     raise
 
-app = Client("file_share_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
+app = Client("tdafilesharebot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
 
 # User state management
 user_states = {}
@@ -95,19 +95,56 @@ async def check_channel_membership(client, user_id, channel):
 
 async def is_user_joined(client, user_id):
     try:
+        # Get all required channels from Firebase
         channels_ref = db.reference("channels")
         channels = channels_ref.get() or {}
         
+        # If no channels are set, fall back to default channel
         if not channels:
             return await check_channel_membership(client, user_id, CHANNEL_ID)
         
+        # Check membership in all required channels
         for channel_id in channels:
             if not await check_channel_membership(client, user_id, int(channel_id)):
                 return False
         return True
     except Exception as e:
         logger.error(f"Error in is_user_joined: {e}")
-        return True
+        return True  # Allow access if we can't verify membership
+
+async def send_individual_file(client, chat_id, files):
+    for file in files:
+        try:
+            if file["file_type"] == "text":
+                await client.send_message(chat_id, file["file_name"])
+            else:
+                if file["file_type"] == "photo":
+                    await client.send_photo(
+                        chat_id=chat_id,
+                        photo=file["file_id"],
+                        caption=file.get("caption", None)
+                    )
+                elif file["file_type"] == "video":
+                    await client.send_video(
+                        chat_id=chat_id,
+                        video=file["file_id"],
+                        caption=file.get("caption", None)
+                    )
+                elif file["file_type"] == "document":
+                    await client.send_document(
+                        chat_id=chat_id,
+                        document=file["file_id"],
+                        caption=file.get("caption", None)
+                    )
+                elif file["file_type"] == "audio":
+                    await client.send_audio(
+                        chat_id=chat_id,
+                        audio=file["file_id"],
+                        caption=file.get("caption", None)
+                    )
+        except Exception as e:
+            logger.error(f"Error sending file: {e}")
+            await client.send_message(chat_id, f"Error sending file: {e}")
 
 def shorten_url(long_url):
     try:
@@ -417,10 +454,11 @@ async def send_random_movie(client, chat_id):
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
-# ====================== START COMMAND ======================
+# ====================== START COMMAND (ORIGINAL VERSION - NO CHANGES) ======================
 
 @app.on_message(filters.command("start"))
 async def start(client, message):
+    # Check if user is banned
     if db.reference(f"banned_users/{message.from_user.id}").get():
         await message.reply("🚫 You are banned from using this bot.")
         return
@@ -428,75 +466,231 @@ async def start(client, message):
     user = message.from_user
     await store_user_info(user.id, user.username, user.first_name, user.last_name)
     
-    if len(message.command) == 1:
+    wait_msg = await message.reply("⏳ Please wait while we process your request...")
+    
+    # Get all required channels
+    channels_ref = db.reference("channels")
+    channels = channels_ref.get() or {}
+    channel_list = []
+    for cid, data in channels.items():
+        channel_list.append({
+            "id": int(cid),
+            "username": data.get("username"),
+            "title": data.get("title", "Unknown Channel")
+        })
+    
+    # If no channels are set, use the default channel
+    if not channel_list:
+        channel_list.append({
+            "id": CHANNEL_ID,
+            "username": CHANNEL_USERNAME,
+            "title": "Solo Leveling Manhwa Tamil"
+        })
+
+    # Check membership
+    has_joined = True
+    if channel_list:
         has_joined = await is_user_joined(client, user.id)
-        
+
+    image_id = "AgACAgUAAxkBAAODaC1qWLvvXeuS_6G-CdAZ9ddPfLYAApHAMRsMImlVEq4iRgAB0ucVAAgBAAMCAAN4AAceBA"
+    image_id1 = "AgACAgUAAxkBAAOGaC1qZawX7EK9SP09ZFUJM7_TScAAApLAMRsMImlVWCz45ax3wUAACAEAAwIAA3gABx4E"
+    
+    if len(message.command) == 1:
         if not has_joined:
-            channels_ref = db.reference("channels")
-            channels = channels_ref.get() or {}
-            if not channels:
-                channels = {str(CHANNEL_ID): {"title": "Default Channel", "username": CHANNEL_USERNAME}}
-            
             buttons = []
-            for cid, data in channels.items():
-                if data.get("username"):
-                    url = f"https://t.me/{data['username']}"
+            for chan in channel_list:
+                if chan["username"]:
+                    url = f"https://t.me/{chan['username']}"
                 else:
-                    url = f"https://t.me/c/{str(cid).replace('-100', '')}"
-                buttons.append([InlineKeyboardButton(f"Join {data['title']}", url=url)])
-            
+                    url = f"https://t.me/c/{str(chan['id']).replace('-100', '')}"
+                buttons.append([InlineKeyboardButton(f"Join {chan['title']}", url=url)])
             buttons.append([InlineKeyboardButton("✅ Verify Join", callback_data="check_join")])
             
-            await message.reply_photo(
-                photo="AgACAgUAAxkBAAODaC1qWLvvXeuS_6G-CdAZ9ddPfLYAApHAMRsMImlVEq4iRgAB0ucVAAgBAAMCAAN4AAceBA",
-                caption=f"*Hello {user.first_name}*\n\nYou must join our channels to get files",
+            caption = f"""
+*Hᴇʟʟᴏ {user.first_name}*
+
+*You must join our channels to get anime files*
+
+*Please join all channels below:*
+            """
+            await wait_msg.delete()
+            await client.send_photo(
+                chat_id=message.chat.id,
+                photo=image_id,
+                caption=caption,
                 reply_markup=InlineKeyboardMarkup(buttons),
                 parse_mode=enums.ParseMode.MARKDOWN
             )
         else:
-            await message.reply_photo(
-                photo="AgACAgUAAxkBAAOGaC1qZawX7EK9SP09ZFUJM7_TScAAApLAMRsMImlVWCz45ax3wUAACAEAAwIAA3gABx4E",
-                caption=f"*Hello {user.first_name}*\n\nI am a File Sharing Bot",
+            caption = f"""
+*Hᴇʟʟᴏ {user.first_name}*
+
+*I Aᴍ File Sharing Bᴏᴛ I Wɪʟʟ Gɪᴠᴇ Yᴏᴜ Mangas and Manhwas Fɪʟᴇs Fʀᴏᴍ* [Manga And Manhwa Tamil]({SOURCE_CHANNEL})
+            """
+            await wait_msg.delete()
+            await client.send_photo(
+                chat_id=message.chat.id,
+                photo=image_id1,
+                caption=caption,
                 parse_mode=enums.ParseMode.MARKDOWN
             )
-    else:
+    
+    elif len(message.command) > 1:
         unique_id = message.command[1]
+        if not has_joined:
+            buttons = []
+            for chan in channel_list:
+                if chan["username"]:
+                    url = f"https://t.me/{chan['username']}"
+                else:
+                    url = f"https://t.me/c/{str(chan['id']).replace('-100', '')}"
+                buttons.append([InlineKeyboardButton(f"Join {chan['title']}", url=url)])
+            buttons.append([InlineKeyboardButton("✅ GET FILE", callback_data=f"getfile_{unique_id}")])
+            
+            caption = f"""
+*Hᴇʟʟᴏ {user.first_name}*
+
+*You must join our channels to get this file*
+
+*Please join all channels below:*
+            """
+            await wait_msg.delete()
+            await client.send_photo(
+                chat_id=message.chat.id,
+                photo=image_id,
+                caption=caption,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode=enums.ParseMode.MARKDOWN
+            )
+        else:
+            if '_' in unique_id:
+                batch_id, quality = unique_id.split('_')
+                batch_data = db.reference(f"batches/{batch_id}").get()
+                if batch_data and not batch_data.get("deleted"):
+                    files = batch_data["files"].get(quality, [])
+                    if files:
+                        await wait_msg.edit_text("⏳ Preparing your file, please wait...")
+                        await send_individual_file(client, message.chat.id, files)
+                        await wait_msg.delete()
+                        return
+            else:
+                batch_data = db.reference(f"batches/{unique_id}").get()
+                if batch_data and not batch_data.get("deleted"):
+                    buttons = []
+                    for quality in batch_data["files"].keys():
+                        buttons.append([InlineKeyboardButton(
+                            f"📥 {quality}", 
+                            url=f"https://t.me/{(await client.get_me()).username}?start={unique_id}_{quality}"
+                        )])
+                    
+                    await wait_msg.delete()
+                    if batch_data.get("image"):
+                        await client.send_photo(
+                            chat_id=message.chat.id,
+                            photo=batch_data["image"]["file_id"],
+                            caption=batch_data["image"]["caption"],
+                            reply_markup=InlineKeyboardMarkup(buttons)
+                        )
+                    else:
+                        await client.send_message(
+                            chat_id=message.chat.id,
+                            text=f"🎬 {batch_data['titles'][0]}\n\nSelect quality:",
+                            reply_markup=InlineKeyboardMarkup(buttons)
+                        )
+                    return
+            
+            await wait_msg.edit_text("❌ File not found or deleted!")
+
+# ====================== CALLBACK HANDLERS ======================
+
+@app.on_callback_query(filters.regex("^check_join$"))
+async def handle_check_join(client, callback_query):
+    user_id = callback_query.from_user.id
+    await callback_query.answer("⏳ Checking your channel status...")
+    
+    wait_msg = await callback_query.message.reply("⏳ Please wait while we verify your channel membership...")
+    
+    has_joined = await is_user_joined(client, user_id)
+    
+    if has_joined:
+        await wait_msg.edit_text("✅ Thank you for joining! Now you can access all files.")
+        await callback_query.message.delete()
+        
+        caption = f"""
+*Hᴇʟʟᴏ {callback_query.from_user.first_name}*
+
+*I Aᴍ Aɴɪᴍᴇ Bᴏᴛ I Wɪʟʟ Gɪᴠᴇ Yᴏᴜ Aɴɪᴍᴇ Fɪʟᴇs Fʀᴏᴍ* [Tᴀᴍɪʟ Dubbed Aɴɪᴍᴇ]({SOURCE_CHANNEL})
+        """
+        image_id = "AgACAgUAAxkBAAODaC1qWLvvXeuS_6G-CdAZ9ddPfLYAApHAMRsMImlVEq4iRgAB0ucVAAgBAAMCAAN4AAceBA"
+        
+        await client.send_photo(
+            chat_id=callback_query.message.chat.id,
+            photo=image_id,
+            caption=caption,
+            parse_mode=enums.ParseMode.MARKDOWN
+        )
+    else:
+        await wait_msg.edit_text("❌ You haven't joined all required channels yet. Please join them first!")
+    
+    await asyncio.sleep(5)
+    await wait_msg.delete()
+
+@app.on_callback_query(filters.regex("^getfile_"))
+async def handle_getfile(client, callback_query):
+    user_id = callback_query.from_user.id
+    unique_id = callback_query.data.split("_")[1]
+    
+    await callback_query.answer("⏳ Please wait while we check your access...")
+    
+    wait_msg = await callback_query.message.reply("⏳ Verifying your channel membership...")
+    
+    has_joined = await is_user_joined(client, user_id)
+    
+    if has_joined:
         if '_' in unique_id:
             batch_id, quality = unique_id.split('_')
+            batch_data = db.reference(f"batches/{batch_id}").get()
+            if batch_data and not batch_data.get("deleted"):
+                files = batch_data["files"].get(quality, [])
+                if files:
+                    await wait_msg.edit_text("⏳ Preparing your file, please wait...")
+                    await callback_query.message.delete()
+                    await send_individual_file(client, callback_query.message.chat.id, files)
+                    await wait_msg.delete()
+                    return
         else:
-            batch_id, quality = unique_id, None
-        
-        batch_data = db.reference(f"batches/{batch_id}").get()
-        if not batch_data or batch_data.get("deleted"):
-            await message.reply("❌ File not found or deleted!")
-            return
-        
-        if quality:
-            files = batch_data["files"].get(quality, [])
-            if not files:
-                await message.reply("❌ No files found for this quality!")
+            batch_data = db.reference(f"batches/{unique_id}").get()
+            if batch_data and not batch_data.get("deleted"):
+                buttons = []
+                for quality in batch_data["files"].keys():
+                    buttons.append([InlineKeyboardButton(
+                        f"📥 {quality}", 
+                        url=f"https://t.me/{(await client.get_me()).username}?start={unique_id}_{quality}"
+                    )])
+                
+                await callback_query.message.delete()
+                if batch_data.get("image"):
+                    await client.send_photo(
+                        chat_id=callback_query.message.chat.id,
+                        photo=batch_data["image"]["file_id"],
+                        caption=batch_data["image"]["caption"],
+                        reply_markup=InlineKeyboardMarkup(buttons)
+                    )
+                else:
+                    await client.send_message(
+                        chat_id=callback_query.message.chat.id,
+                        text=f"🎬 {batch_data['titles'][0]}\n\nSelect quality:",
+                        reply_markup=InlineKeyboardMarkup(buttons)
+                    )
+                await wait_msg.delete()
                 return
-            
-            await send_individual_file(client, message.chat.id, files)
-        else:
-            buttons = []
-            for qual in batch_data["files"].keys():
-                buttons.append([InlineKeyboardButton(
-                    f"📥 {qual}", 
-                    url=f"https://t.me/{(await client.get_me()).username}?start={batch_id}_{qual}"
-                )])
-            
-            if batch_data.get("image"):
-                await message.reply_photo(
-                    photo=batch_data["image"]["file_id"],
-                    caption=batch_data["image"]["caption"],
-                    reply_markup=InlineKeyboardMarkup(buttons)
-                )
-            else:
-                await message.reply(
-                    f"🎬 {batch_data['titles'][0]}\n\nSelect quality:",
-                    reply_markup=InlineKeyboardMarkup(buttons)
-                )
+        
+        await wait_msg.edit_text("❌ File not found or deleted!")
+    else:
+        await wait_msg.edit_text("❌ Please join all required channels first!")
+    
+    await asyncio.sleep(5)
+    await wait_msg.delete()
 
 # ====================== ADMIN COMMANDS ======================
 
@@ -782,31 +976,6 @@ async def delete_joined_channel(client, message):
         await message.reply(f"❌ Error: {str(e)}")
 
 # ====================== CALLBACK HANDLERS ======================
-
-@app.on_callback_query(filters.regex("^check_join$"))
-async def handle_check_join(client, callback_query):
-    user_id = callback_query.from_user.id
-    await callback_query.answer("⏳ Checking your channel status...")
-    
-    wait_msg = await callback_query.message.reply("⏳ Please wait while we verify your channel membership...")
-    
-    has_joined = await is_user_joined(client, user_id)
-    
-    if has_joined:
-        await wait_msg.edit_text("✅ Thank you for joining! Now you can access all files.")
-        await callback_query.message.delete()
-        
-        await client.send_photo(
-            chat_id=callback_query.message.chat.id,
-            photo="AgACAgUAAxkBAAOGaC1qZawX7EK9SP09ZFUJM7_TScAAApLAMRsMImlVWCz45ax3wUAACAEAAwIAA3gABx4E",
-            caption=f"*Hello {callback_query.from_user.first_name}*\n\nI am a File Sharing Bot",
-            parse_mode=enums.ParseMode.MARKDOWN
-        )
-    else:
-        await wait_msg.edit_text("❌ You haven't joined all required channels yet. Please join them first!")
-    
-    await asyncio.sleep(5)
-    await wait_msg.delete()
 
 @app.on_callback_query(filters.regex("^delete_broadcast_"))
 async def handle_delete_broadcast(client, callback_query):
