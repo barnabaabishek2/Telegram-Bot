@@ -1,4 +1,3 @@
-
 import asyncio
 import random
 import string
@@ -32,6 +31,8 @@ CHANNEL_USERNAME = "@solo_leveling_manhwa_tamil"
 CHANNEL_ID = -1002662584633
 CHANNEL_LINK = "https://t.me/solo_leveling_manhwa_tamil"
 SOURCE_CHANNEL = "https://t.me/mangas_manhwas_tamil"
+TUTORIAL_CHANNEL = "https://t.me/tutorial_channel"
+JOIN_CHANNELS_LINK = "https://t.me/join_channels_folder"
 
 # Initialize Firebase
 try:
@@ -41,14 +42,14 @@ try:
     
     cred = credentials.Certificate(json.loads(firebase_config))
     firebase_admin.initialize_app(cred, {
-         "databaseURL": "https://movie-or-anime-search-bot-default-rtdb.firebaseio.com"
+        "databaseURL": "https://your-firebase-app.firebaseio.com"
     })
     logger.info("Firebase initialized successfully!")
 except Exception as e:
     logger.error(f"Firebase initialization error: {e}")
     raise
 
-app = Client("tdafilesharebot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
+app = Client("file_share_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
 
 # User state management
 user_states = {}
@@ -94,56 +95,19 @@ async def check_channel_membership(client, user_id, channel):
 
 async def is_user_joined(client, user_id):
     try:
-        # Get all required channels from Firebase
         channels_ref = db.reference("channels")
         channels = channels_ref.get() or {}
         
-        # If no channels are set, fall back to default channel
         if not channels:
             return await check_channel_membership(client, user_id, CHANNEL_ID)
         
-        # Check membership in all required channels
         for channel_id in channels:
             if not await check_channel_membership(client, user_id, int(channel_id)):
                 return False
         return True
     except Exception as e:
         logger.error(f"Error in is_user_joined: {e}")
-        return True  # Allow access if we can't verify membership
-
-async def send_individual_file(client, chat_id, files):
-    for file in files:
-        try:
-            if file["file_type"] == "text":
-                await client.send_message(chat_id, file["file_name"])
-            else:
-                if file["file_type"] == "photo":
-                    await client.send_photo(
-                        chat_id=chat_id,
-                        photo=file["file_id"],
-                        caption=file.get("caption", None)
-                    )
-                elif file["file_type"] == "video":
-                    await client.send_video(
-                        chat_id=chat_id,
-                        video=file["file_id"],
-                        caption=file.get("caption", None)
-                    )
-                elif file["file_type"] == "document":
-                    await client.send_document(
-                        chat_id=chat_id,
-                        document=file["file_id"],
-                        caption=file.get("caption", None)
-                    )
-                elif file["file_type"] == "audio":
-                    await client.send_audio(
-                        chat_id=chat_id,
-                        audio=file["file_id"],
-                        caption=file.get("caption", None)
-                    )
-        except Exception as e:
-            logger.error(f"Error sending file: {e}")
-            await client.send_message(chat_id, f"Error sending file: {e}")
+        return True
 
 def shorten_url(long_url):
     try:
@@ -171,764 +135,6 @@ def shorten_url(long_url):
     except Exception as e:
         logger.error(f"Unexpected error shortening URL: {e}")
         return None
-
-# ====================== ADMIN COMMANDS ======================
-
-@app.on_message(filters.command("ban") & filters.user(OWNER_IDS))
-async def ban_user(client, message):
-    if len(message.command) < 2:
-        await message.reply("❌ Usage: `/ban <user_id> [reason]`", parse_mode=enums.ParseMode.MARKDOWN)
-        return
-    
-    try:
-        user_id = int(message.command[1])
-        reason = " ".join(message.command[2:]) if len(message.command) > 2 else "No reason provided"
-        
-        # Store ban info in Firebase
-        db.reference(f"banned_users/{user_id}").set({
-            "banned_by": message.from_user.id,
-            "reason": reason,
-            "banned_at": datetime.now().isoformat()
-        })
-        
-        # Try to notify the user
-        try:
-            await client.send_message(
-                user_id,
-                f"🚫 You have been banned from using this bot.\nReason: {reason}"
-            )
-        except Exception as e:
-            logger.warning(f"Could not notify banned user {user_id}: {e}")
-        
-        await message.reply(f"✅ User {user_id} has been banned.\nReason: {reason}")
-        
-    except ValueError:
-        await message.reply("❌ Invalid user ID. Must be a numeric value.")
-    except Exception as e:
-        logger.error(f"Error banning user: {e}")
-        await message.reply(f"❌ Error banning user: {e}")
-
-@app.on_message(filters.command("unban") & filters.user(OWNER_IDS))
-async def unban_user(client, message):
-    if len(message.command) < 2:
-        await message.reply("❌ Usage: `/unban <user_id>`", parse_mode=enums.ParseMode.MARKDOWN)
-        return
-    
-    try:
-        user_id = int(message.command[1])
-        ban_ref = db.reference(f"banned_users/{user_id}")
-        
-        if not ban_ref.get():
-            await message.reply(f"ℹ User {user_id} is not currently banned.")
-            return
-        
-        ban_ref.delete()
-        
-        # Try to notify the user
-        try:
-            await client.send_message(
-                user_id,
-                "🎉 Your ban has been lifted! You can now use the bot again."
-            )
-        except Exception as e:
-            logger.warning(f"Could not notify unbanned user {user_id}: {e}")
-        
-        await message.reply(f"✅ User {user_id} has been unbanned successfully.")
-        
-    except ValueError:
-        await message.reply("❌ Invalid user ID. Must be a numeric value.")
-    except Exception as e:
-        logger.error(f"Error unbanning user: {e}")
-        await message.reply(f"❌ Error unbanning user: {e}")
-
-@app.on_message(filters.command("broadcast_delete") & filters.user(OWNER_IDS))
-async def broadcast_delete(client, message):
-    try:
-        # Get all broadcasts from Firebase
-        broadcasts_ref = db.reference("broadcasts")
-        broadcasts = broadcasts_ref.get() or {}
-        
-        if not broadcasts:
-            await message.reply("ℹ No active broadcasts found.")
-            return
-        
-        # If message ID is provided, handle single broadcast deletion
-        if len(message.command) > 1:
-            original_message_id = int(message.command[1])
-            if str(original_message_id) not in broadcasts:
-                await message.reply("❌ No broadcast found with that ID.")
-                return
-            
-            # Create delete button for single broadcast
-            delete_button = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🗑 DELETE THIS BROADCAST", callback_data=f"delete_broadcast_{original_message_id}")]
-            ])
-            
-            broadcast_data = broadcasts[str(original_message_id)]
-            await message.reply(
-                f"📢 Broadcast Message ID: `{original_message_id}`\n\n"
-                f"• Recipients: {len(broadcast_data.get('recipients', []))}\n"
-                f"• Sent at: {broadcast_data.get('timestamp', 'N/A')}\n\n"
-                "Click the button below to delete this broadcast from all users:",
-                reply_markup=delete_button,
-                parse_mode=enums.ParseMode.MARKDOWN
-            )
-            return
-        
-        # If no message ID provided, show all broadcasts with delete buttons
-        response = "📢 *Active Broadcasts*\n\n"
-        for msg_id, broadcast_data in broadcasts.items():
-            response += (
-                f"📌 Message ID: `{msg_id}`\n"
-                f"• Recipients: {len(broadcast_data.get('recipients', []))}\n"
-                f"• Sent at: {broadcast_data.get('timestamp', 'N/A')}\n"
-            )
-            
-            # Add delete button for each broadcast
-            delete_button = InlineKeyboardMarkup([
-                [InlineKeyboardButton(f"🗑 Delete Broadcast {msg_id}", callback_data=f"delete_broadcast_{msg_id}")]
-            ])
-            
-            await message.reply(
-                response,
-                reply_markup=delete_button,
-                parse_mode=enums.ParseMode.MARKDOWN
-            )
-            response = ""  # Reset for next message
-            await asyncio.sleep(0.5)  # Small delay between messages
-        
-    except ValueError:
-        await message.reply("❌ Invalid message ID. Must be a numeric value.")
-    except Exception as e:
-        logger.error(f"Error in broadcast_delete: {e}")
-        await message.reply(f"❌ Error processing broadcast delete: {e}")
-
-@app.on_callback_query(filters.regex("^delete_broadcast_"))
-async def handle_delete_broadcast(client, callback_query):
-    user_id = callback_query.from_user.id
-    if user_id not in OWNER_IDS:
-        await callback_query.answer("❌ You're not authorized to perform this action!", show_alert=True)
-        return
-    
-    original_message_id = int(callback_query.data.split("_")[2])
-    await callback_query.answer("⏳ Deleting broadcast from all users...")
-    
-    processing_msg = await callback_query.message.reply("🔄 Deleting broadcast messages from users...")
-    
-    # Get broadcast data
-    broadcast_ref = db.reference(f"broadcasts/{original_message_id}")
-    broadcast_data = broadcast_ref.get()
-    
-    if not broadcast_data:
-        await processing_msg.edit_text("❌ Broadcast data not found!")
-        return
-    
-    recipient_ids = broadcast_data.get("recipients", [])
-    sent_messages_dict = broadcast_data.get("sent_messages", {})
-    total_recipients = len(recipient_ids)
-    success = 0
-    failed = 0
-    
-    # Delete messages for each recipient
-    for user_id in recipient_ids:
-        try:
-            # Get the message IDs for this user
-            message_ids = sent_messages_dict.get(str(user_id), [])
-            
-            # Convert message IDs to integers and filter out None values
-            message_ids = [int(msg_id) for msg_id in message_ids if msg_id is not None]
-            
-            if message_ids:
-                # Delete all messages sent to this user
-                await client.delete_messages(chat_id=int(user_id), message_ids=message_ids)
-                success += 1
-            else:
-                failed += 1
-                logger.warning(f"No valid message IDs found for user {user_id}")
-        except Exception as e:
-            logger.error(f"Could not delete messages for {user_id}: {e}")
-            failed += 1
-        await asyncio.sleep(0.3)  # Rate limiting
-    
-    # Update the processing message with results
-    result_message = (
-        f"✅ Broadcast message deletion completed!\n\n"
-        f"• Total recipients: {total_recipients}\n"
-        f"• Successfully deleted: {success}\n"
-        f"• Failed: {failed}"
-    )
-    
-    await processing_msg.edit_text(result_message)
-    
-    # Remove the broadcast record from Firebase
-    broadcast_ref.delete()
-    
-    # Edit the original delete button message to show completion
-    await callback_query.message.edit_text(
-        f"🗑 Broadcast Message ID: `{original_message_id}`\n\n"
-        f"• Deletion completed at: {datetime.now().isoformat()}\n"
-        f"• Successfully deleted from {success} users\n\n"
-        "This broadcast has been fully deleted.",
-        reply_markup=None
-    )
-
-@app.on_message(filters.command("stats") & filters.user(OWNER_IDS))
-async def stats_command(client, message):
-    try:
-        processing_msg = await message.reply("📊 Gathering statistics, please wait...")
-        
-        # User stats
-        users_ref = db.reference("users")
-        users = users_ref.get() or {}
-        total_users = len(users)
-        
-        active_users = 0
-        thirty_days_ago = datetime.now() - timedelta(days=30)
-        for user_data in users.values():
-            last_seen_str = user_data.get("last_seen", "")
-            if last_seen_str:
-                try:
-                    last_seen = datetime.fromisoformat(last_seen_str)
-                    if last_seen > thirty_days_ago:
-                        active_users += 1
-                except ValueError:
-                    continue
-        
-        # File stats
-        files_ref = db.reference("files")
-        files = files_ref.get() or {}
-        total_files = len(files)
-        active_files = sum(1 for f in files.values() if not f.get("deleted", False))
-        
-        # Channel stats
-        try:
-            channel = await client.get_chat(CHANNEL_ID)
-            channel_members = channel.members_count if hasattr(channel, 'members_count') else "N/A"
-        except Exception as e:
-            channel_members = f"Error: {str(e)}"
-        
-        # Ban stats
-        banned_users_ref = db.reference("banned_users")
-        banned_users = banned_users_ref.get() or {}
-        total_banned = len(banned_users)
-        
-        # Get required channels
-        channels_ref = db.reference("channels")
-        channels = channels_ref.get() or {}
-        
-        stats_message = f"""
-📊 *Bot Statistics Report*
-
-👥 *Users:*
-• Total Users: `{total_users}`
-• Active Users (last 30 days): `{active_users}`
-• Banned Users: `{total_banned}`
-
-📂 *Files:*
-• Total Files: `{total_files}`
-• Active Files: `{active_files}`
-• Deleted Files: `{total_files - active_files}`
-
-📢 *Channel Stats:*
-• Main Channel Members: `{channel_members}`
-• Required Channels: `{len(channels)}`
-        """
-        
-        await processing_msg.edit_text(stats_message, parse_mode=enums.ParseMode.MARKDOWN)
-        
-    except Exception as e:
-        logger.error(f"Error generating stats: {e}")
-        await message.reply(f"❌ Error generating statistics: {e}")
-
-# ====================== NEW FILE MANAGEMENT COMMANDS ======================
-
-@app.on_message(filters.command("file_delete") & filters.user(OWNER_IDS))
-async def file_delete_command(client, message):
-    files_ref = db.reference("files")
-    all_files = files_ref.get() or {}
-    
-    if not all_files:
-        await message.reply("❌ No files found in the database!")
-        return
-    
-    # Get all active files (not deleted)
-    active_files = [(fid, fdata) for fid, fdata in all_files.items() if not fdata.get("deleted")]
-    
-    if not active_files:
-        await message.reply("ℹ No active files found in database.")
-        return
-    
-    # Check if searching for specific file
-    if len(message.command) > 1:
-        query = ' '.join(message.command[1:]).lower()
-        matches = []
-        
-        for file_id, file_data in active_files:
-            # Check file ID or file names
-            if query in file_id.lower():
-                matches.append((file_id, file_data))
-            else:
-                for f in file_data.get("files", []):
-                    if query in f.get("file_name", "").lower():
-                        matches.append((file_id, file_data))
-                        break
-        
-        if not matches:
-            await message.reply("❌ No active files found matching your query.")
-            return
-            
-        files_to_show = matches
-    else:
-        # Show ALL active files if no query provided
-        files_to_show = active_files
-    
-    # Count total files being shown
-    total_files = len(files_to_show)
-    processing_msg = await message.reply(f"⏳ Preparing {total_files} files for deletion...")
-    
-    # Send files with details
-    for file_id, file_data in files_to_show:
-        # Get uploader info
-        uploader_id = file_data.get("uploaded_by", "")
-        uploader_info = db.reference(f"users/{uploader_id}").get() or {}
-        uploader_name = uploader_info.get("first_name", "Unknown") + " " + uploader_info.get("last_name", "")
-        uploader_username = f"@{uploader_info.get('username', '')}" if uploader_info.get("username") else "No username"
-        
-        # Format creation time
-        created_at = file_data.get("created_at", "")
-        try:
-            created_dt = datetime.fromisoformat(created_at)
-            created_str = created_dt.strftime("%Y-%m-%d %H:%M:%S")
-        except:
-            created_str = "Unknown"
-        
-        # Prepare file details
-        files = file_data.get("files", [])
-        file_details = []
-        for f in files[:5]:  # Show first 5 files to avoid too long messages
-            file_type = f.get("file_type", "unknown").upper()
-            file_name = f.get("file_name", "unnamed")
-            file_size = f.get("file_size", "N/A")
-            file_details.append(f"▸ {file_type}: {file_name} ({file_size})")
-        
-        if len(files) > 5:
-            file_details.append(f"▸ ...and {len(files)-5} more files")
-        
-        # Prepare the response message
-        response = (
-            f"📁 *File Batch Details*\n\n"
-            f"🆔 *Batch ID:* `{file_id}`\n"
-            f"🕒 *Created:* `{created_str}`\n"
-            f"👤 *Uploader:* {uploader_name} ({uploader_username})\n\n"
-            f"📂 *Files in this batch ({len(files)}):*\n" + "\n".join(file_details) + "\n\n"
-            f"🗑 *Click below to delete this batch permanently*"
-        )
-
-        buttons = InlineKeyboardMarkup([[
-            InlineKeyboardButton("⚠️ DELETE THIS BATCH", callback_data=f"delete_file_{file_id}")
-        ]])
-        
-        try:
-            await client.send_message(
-                chat_id=message.chat.id,
-                text=response,
-                reply_markup=buttons,
-                parse_mode=enums.ParseMode.MARKDOWN
-            )
-            await asyncio.sleep(0.3)  # Small delay to avoid flooding
-        except Exception as e:
-            logger.error(f"Error sending file info: {e}")
-    
-    await processing_msg.delete()
-    
-    if len(message.command) == 1:
-        await message.reply(f"✅ Showing all {total_files} active files. Use `/file_delete <query>` to search for specific files.")
-
-@app.on_callback_query(filters.regex("^delete_file_"))
-async def handle_delete_file(client, callback_query):
-    user_id = callback_query.from_user.id
-    if user_id not in OWNER_IDS:
-        await callback_query.answer("❌ You're not authorized to perform this action!", show_alert=True)
-        return
-
-    file_id = callback_query.data.split("_")[2]
-    file_ref = db.reference(f"files/{file_id}")
-    file_data = file_ref.get()
-    
-    if not file_data:
-        await callback_query.answer("❌ File already deleted or not found!", show_alert=True)
-        return
-    
-    # Get file details for confirmation message
-    files = file_data.get("files", [])
-    file_count = len(files)
-    first_file_name = files[0].get("file_name", "unnamed") if files else "unknown"
-    
-    # Mark as deleted in Firebase
-    file_ref.update({
-        "deleted": True,
-        "deleted_at": datetime.now().isoformat(),
-        "deleted_by": user_id
-    })
-    
-    await callback_query.answer(f"✅ Deleted batch with {file_count} files", show_alert=True)
-    
-    # Edit the original message to show it's been deleted
-    await callback_query.message.edit_text(
-        f"🗑 *DELETED FILE BATCH*\n\n"
-        f"🆔 Batch ID: `{file_id}`\n"
-        f"📂 Contained: {file_count} files\n"
-        f"🔸 Example: {first_file_name}\n\n"
-        f"❌ This batch has been permanently deleted and is no longer accessible.",
-        reply_markup=None,
-        parse_mode=enums.ParseMode.MARKDOWN
-    )
-
-@app.on_callback_query(filters.regex("^delete_file_"))
-async def handle_delete_file(client, callback_query):
-    user_id = callback_query.from_user.id
-    if user_id not in OWNER_IDS:
-        await callback_query.answer("❌ Authorization required!", show_alert=True)
-        return
-
-    file_id = callback_query.data.split("_")[2]
-    file_ref = db.reference(f"files/{file_id}")
-    
-    if not file_ref.get():
-        await callback_query.answer("❌ File already deleted!", show_alert=True)
-        return
-
-    # Mark as deleted instead of removing for record keeping
-    file_ref.update({"deleted": True, "deleted_at": datetime.now().isoformat()})
-    
-    await callback_query.answer("✅ File deleted successfully!", show_alert=True)
-    await callback_query.message.edit_text(
-        f"🗑 *DELETED FILE*\nID: `{file_id}`\n\nThis file is no longer accessible.",
-        reply_markup=None
-    )
-
-# ====================== CHANNEL MANAGEMENT COMMANDS ======================
-
-@app.on_message(filters.command("add_joined_channel") & filters.user(OWNER_IDS))
-async def add_joined_channel(client, message):
-    if len(message.command) < 2:
-        await message.reply("❌ Usage: /add_joined_channel <channel_link_or_username>")
-        return
-
-    try:
-        # Extract channel info
-        channel_input = message.command[1].strip()
-        if channel_input.startswith("https://t.me/"):
-            channel_input = channel_input.split("/")[-1]
-        
-        # Get channel details
-        chat = await client.get_chat(channel_input)
-        if chat.type not in [enums.ChatType.CHANNEL, enums.ChatType.SUPERGROUP]:
-            await message.reply("❌ Only channels can be added!")
-            return
-
-        # Verify bot is admin
-        try:
-            bot_member = await client.get_chat_member(chat.id, (await client.get_me()).id)
-            if bot_member.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
-                await message.reply("❌ I must be an admin in this channel!")
-                return
-        except Exception as e:
-            await message.reply(f"❌ Admin check failed: {str(e)}")
-            return
-
-        # Store in Firebase
-        channels_ref = db.reference("channels")
-        channels_ref.child(str(chat.id)).set({
-            "title": chat.title,
-            "username": chat.username,
-            "added_by": message.from_user.id,
-            "added_at": datetime.now().isoformat()
-        })
-
-        await message.reply(
-            f"✅ Added channel:\n"
-            f"📢 **{chat.title}**\n"
-            f"🆔 `{chat.id}`\n"
-            f"🌐 @{chat.username or 'N/A'}"
-        )
-    except Exception as e:
-        await message.reply(f"❌ Error: {str(e)}")
-
-@app.on_message(filters.command("delete_joined_channel") & filters.user(OWNER_IDS))
-async def delete_joined_channel(client, message):
-    if len(message.command) < 2:
-        await message.reply("❌ Usage: /delete_joined_channel <channel_link_or_id>")
-        return
-
-    try:
-        # Resolve channel
-        channel_input = message.command[1].strip()
-        chat = await client.get_chat(channel_input)
-        
-        # Remove from Firebase
-        channels_ref = db.reference("channels")
-        channel_ref = channels_ref.child(str(chat.id))
-        
-        if not channel_ref.get():
-            await message.reply("❌ Channel not in list!")
-            return
-
-        channel_ref.delete()
-        await message.reply(f"✅ Removed channel: {chat.title} (ID: {chat.id})")
-    except Exception as e:
-        await message.reply(f"❌ Error: {str(e)}")
-
-# ====================== USER COMMANDS ======================
-
-@app.on_message(filters.command("start"))
-async def start(client, message):
-    # Check if user is banned
-    if db.reference(f"banned_users/{message.from_user.id}").get():
-        await message.reply("🚫 You are banned from using this bot.")
-        return
-    
-    user = message.from_user
-    await store_user_info(user.id, user.username, user.first_name, user.last_name)
-    
-    wait_msg = await message.reply("⏳ Please wait while we process your request...")
-    
-    # Get all required channels
-    channels_ref = db.reference("channels")
-    channels = channels_ref.get() or {}
-    channel_list = []
-    for cid, data in channels.items():
-        channel_list.append({
-            "id": int(cid),
-            "username": data.get("username"),
-            "title": data.get("title", "Unknown Channel")
-        })
-    
-    # If no channels are set, use the default channel
-    if not channel_list:
-        channel_list.append({
-            "id": CHANNEL_ID,
-            "username": CHANNEL_USERNAME,
-            "title": "Solo Leveling Manhwa Tamil"
-        })
-
-    # Check membership
-    has_joined = True
-    if channel_list:
-        has_joined = await is_user_joined(client, user.id)
-
-    image_id = "AgACAgUAAxkBAAODaC1qWLvvXeuS_6G-CdAZ9ddPfLYAApHAMRsMImlVEq4iRgAB0ucVAAgBAAMCAAN4AAceBA"
-    image_id1 = "AgACAgUAAxkBAAOGaC1qZawX7EK9SP09ZFUJM7_TScAAApLAMRsMImlVWCz45ax3wUAACAEAAwIAA3gABx4E"
-    
-    if len(message.command) == 1:
-        if not has_joined:
-            buttons = []
-            for chan in channel_list:
-                if chan["username"]:
-                    url = f"https://t.me/{chan['username']}"
-                else:
-                    url = f"https://t.me/c/{str(chan['id']).replace('-100', '')}"
-                buttons.append([InlineKeyboardButton(f"Join {chan['title']}", url=url)])
-            buttons.append([InlineKeyboardButton("✅ Verify Join", callback_data="check_join")])
-            
-            caption = f"""
-*Hᴇʟʟᴏ {user.first_name}*
-
-*You must join our channels to get anime files*
-
-*Please join all channels below:*
-            """
-            await wait_msg.delete()
-            await client.send_photo(
-                chat_id=message.chat.id,
-                photo=image_id,
-                caption=caption,
-                reply_markup=InlineKeyboardMarkup(buttons),
-                parse_mode=enums.ParseMode.MARKDOWN
-            )
-        else:
-            caption = f"""
-*Hᴇʟʟᴏ {user.first_name}*
-
-*I Aᴍ File Sharing Bᴏᴛ I Wɪʟʟ Gɪᴠᴇ Yᴏᴜ Mangas and Manhwas Fɪʟᴇs Fʀᴏᴍ* [Manga And Manhwa Tamil]({SOURCE_CHANNEL})
-            """
-            await wait_msg.delete()
-            await client.send_photo(
-                chat_id=message.chat.id,
-                photo=image_id1,
-                caption=caption,
-                parse_mode=enums.ParseMode.MARKDOWN
-            )
-    
-    elif len(message.command) > 1:
-        unique_id = message.command[1]
-        if not has_joined:
-            buttons = []
-            for chan in channel_list:
-                if chan["username"]:
-                    url = f"https://t.me/{chan['username']}"
-                else:
-                    url = f"https://t.me/c/{str(chan['id']).replace('-100', '')}"
-                buttons.append([InlineKeyboardButton(f"Join {chan['title']}", url=url)])
-            buttons.append([InlineKeyboardButton("✅ GET FILE", callback_data=f"getfile_{unique_id}")])
-            
-            caption = f"""
-*Hᴇʟʟᴏ {user.first_name}*
-
-*You must join our channels to get this file*
-
-*Please join all channels below:*
-            """
-            await wait_msg.delete()
-            await client.send_photo(
-                chat_id=message.chat.id,
-                photo=image_id,
-                caption=caption,
-                reply_markup=InlineKeyboardMarkup(buttons),
-                parse_mode=enums.ParseMode.MARKDOWN
-            )
-        else:
-            file_data = db.reference(f"files/{unique_id}").get()
-            if file_data and not file_data.get("deleted"):
-                await wait_msg.edit_text("⏳ Preparing your file, please wait...")
-                await send_individual_file(client, message.chat.id, file_data["files"])
-                await wait_msg.delete()
-            else:
-                await wait_msg.edit_text("❌ File not found or deleted!")
-
-@app.on_callback_query(filters.regex("^check_join$"))
-async def handle_check_join(client, callback_query):
-    user_id = callback_query.from_user.id
-    await callback_query.answer("⏳ Checking your channel status...")
-    
-    wait_msg = await callback_query.message.reply("⏳ Please wait while we verify your channel membership...")
-    
-    has_joined = await is_user_joined(client, user_id)
-    
-    if has_joined:
-        await wait_msg.edit_text("✅ Thank you for joining! Now you can access all files.")
-        await callback_query.message.delete()
-        
-        caption = f"""
-*Hᴇʟʟᴏ {callback_query.from_user.first_name}*
-
-*I Aᴍ Aɴɪᴍᴇ Bᴏᴛ I Wɪʟʟ Gɪᴠᴇ Yᴏᴜ Aɴɪᴍᴇ Fɪʟᴇs Fʀᴏᴍ* [Tᴀᴍɪʟ Dubbed Aɴɪᴍᴇ]({SOURCE_CHANNEL})
-        """
-        image_id = "AgACAgUAAxkBAAODaC1qWLvvXeuS_6G-CdAZ9ddPfLYAApHAMRsMImlVEq4iRgAB0ucVAAgBAAMCAAN4AAceBA"
-        
-        await client.send_photo(
-            chat_id=callback_query.message.chat.id,
-            photo=image_id,
-            caption=caption,
-            parse_mode=enums.ParseMode.MARKDOWN
-        )
-    else:
-        await wait_msg.edit_text("❌ You haven't joined all required channels yet. Please join them first!")
-    
-    await asyncio.sleep(5)
-    await wait_msg.delete()
-
-@app.on_callback_query(filters.regex("^getfile_"))
-async def handle_getfile(client, callback_query):
-    user_id = callback_query.from_user.id
-    unique_id = callback_query.data.split("_")[1]
-    
-    await callback_query.answer("⏳ Please wait while we check your access...")
-    
-    wait_msg = await callback_query.message.reply("⏳ Verifying your channel membership...")
-    
-    has_joined = await is_user_joined(client, user_id)
-    
-    if has_joined:
-        file_data = db.reference(f"files/{unique_id}").get()
-        if file_data and not file_data.get("deleted"):
-            await wait_msg.edit_text("⏳ Preparing your file, please wait...")
-            await callback_query.message.delete()
-            await send_individual_file(client, callback_query.message.chat.id, file_data["files"])
-        else:
-            await wait_msg.edit_text("❌ File not found or deleted!")
-    else:
-        await wait_msg.edit_text("❌ Please join all required channels first!")
-    
-    await asyncio.sleep(5)
-    await wait_msg.delete()
-
-# ====================== FILE MANAGEMENT ======================
-
-
-
-@app.on_message(filters.command("broadcast") & filters.user(OWNER_IDS))
-async def broadcast_command(client, message):
-    user_id = message.from_user.id
-    user_states[user_id] = {"mode": "broadcast", "content": []}
-    await message.reply(
-        "📢 *Broadcast Mode Activated!*\n\n"
-        "Send me the message or media you want to broadcast to all users.\n"
-        "When finished, send /done to send to all users.\n"
-        "To cancel, send /cancel.",
-        parse_mode=enums.ParseMode.MARKDOWN
-    )
-
-@app.on_message(filters.command("users") & filters.user(OWNER_IDS))
-async def list_users(client, message):
-    try:
-        users_ref = db.reference("users")
-        users = users_ref.get() or {}
-        
-        if not users:
-            await message.reply("No users found in the database!")
-            return
-        
-        response = "📊 *Registered Users*\n\n"
-        for user_id, user_data in users.items():
-            username = user_data.get('username', 'N/A')
-            first_name = user_data.get('first_name', '')
-            last_name = user_data.get('last_name', '')
-            name = f"{first_name} {last_name}".strip()
-            
-            response += f"🆔: `{user_id}`\n"
-            response += f"👤: {name}\n"
-            response += f"📛: @{username}\n"
-            response += "――――――――――――――――――\n"
-        
-        for i in range(0, len(response), 4096):
-            part = response[i:i+4096]
-            await message.reply(part, parse_mode=enums.ParseMode.MARKDOWN)
-            
-    except Exception as e:
-        logger.error(f"Error listing users: {e}")
-        await message.reply(f"❌ Error listing users: {e}")
-
-@app.on_message(filters.command("shortener") & filters.user(OWNER_IDS))
-async def shortener_command(client, message):
-    if len(message.command) < 2:
-        await message.reply(
-            "🔗 *URL Shortener*\n\n"
-            "Usage: `/shortener <long_url>`\n"
-            "Example: `/shortener https://example.com/very/long/url`\n\n"
-            "Note: This uses GPLinks API to shorten URLs",
-            parse_mode=enums.ParseMode.MARKDOWN
-        )
-        return
-    
-    long_url = ' '.join(message.command[1:])
-    if not (long_url.startswith('http://') or long_url.startswith('https://')):
-        await message.reply("❌ Please provide a valid URL starting with http:// or https://")
-        return
-    
-    processing_msg = await message.reply("⏳ Shortening URL using GPLinks, please wait...")
-    
-    short_url = shorten_url(long_url)
-    if short_url:
-        await processing_msg.edit_text(
-            f"✅ *URL Shortened Successfully!*\n\n"
-            f"🔗 Original URL: `{long_url}`\n"
-            f"🪄 Short URL: `{short_url}`\n\n"
-            f"Click to copy: `{short_url}`",
-            parse_mode=enums.ParseMode.MARKDOWN
-        )
-    else:
-        await processing_msg.edit_text("❌ Failed to shorten URL. Please try again later.")
 
 # ====================== BATCH UPLOAD SYSTEM ======================
 
@@ -1089,7 +295,6 @@ async def finalize_batch(client, message):
     unique_id = generate_unique_id()
     bot_username = (await client.get_me()).username
     
-    # Prepare data for Firebase
     batch_data = {
         "titles": state["titles"],
         "image": state["image"],
@@ -1099,10 +304,8 @@ async def finalize_batch(client, message):
         "deleted": False
     }
     
-    # Save to Firebase
     db.reference(f"batches/{unique_id}").set(batch_data)
     
-    # Prepare response message
     qualities = ", ".join(state["files"].keys())
     titles = ", ".join(state["titles"])
     
@@ -1119,20 +322,17 @@ async def finalize_batch(client, message):
 
 # ====================== GROUP SEARCH FUNCTIONALITY ======================
 
-@app.on_message(filters.group & filters.text & ~filters.command(["start", "help"]))
+@app.on_message(filters.group & ~filters.command)
 async def handle_group_search(client, message):
-    # Ignore messages from admins and empty messages
     if message.from_user.id in OWNER_IDS or not message.text:
         return
     
     search_query = message.text.strip().lower()
     if len(search_query) < 3:
-        # Send random movie if message is short like "hi"
         if search_query in ["hi", "hello", "hey"]:
             await send_random_movie(client, message.chat.id)
         return
     
-    # Search in Firebase for matching titles
     batches_ref = db.reference("batches")
     all_batches = batches_ref.get() or {}
     
@@ -1149,22 +349,18 @@ async def handle_group_search(client, message):
     if not matches:
         return
     
-    # For each match, send the poster and buttons
-    for batch_id, batch_data in matches[:3]:  # Limit to 3 results
-        # Prepare buttons for each quality
+    for batch_id, batch_data in matches[:3]:
         buttons = []
         for quality in batch_data.get("files", {}).keys():
             share_link = f"https://t.me/{(await client.get_me()).username}?start={batch_id}_{quality}"
             short_link = shorten_url(share_link) or share_link
             buttons.append([InlineKeyboardButton(f"📥 {quality}", url=short_link)])
         
-        # Add additional buttons
         buttons.append([
-            InlineKeyboardButton("❓ How to Download", url="https://t.me/your_tutorial_channel"),
-            InlineKeyboardButton("📢 Join Channels", url="https://t.me/your_channel_folder")
+            InlineKeyboardButton("❓ How to Download", url=TUTORIAL_CHANNEL),
+            InlineKeyboardButton("📢 Join Channels", url=JOIN_CHANNELS_LINK)
         ])
         
-        # Send the poster image if available
         if batch_data.get("image"):
             await client.send_photo(
                 chat_id=message.chat.id,
@@ -1180,7 +376,6 @@ async def handle_group_search(client, message):
             )
 
 async def send_random_movie(client, chat_id):
-    # Get a random movie from Firebase to send when users say "hi"
     batches_ref = db.reference("batches")
     all_batches = batches_ref.get() or {}
     
@@ -1192,7 +387,6 @@ async def send_random_movie(client, chat_id):
     if batch_data.get("deleted"):
         return
     
-    # Prepare one quality button
     qualities = list(batch_data.get("files", {}).keys())
     if not qualities:
         return
@@ -1204,8 +398,8 @@ async def send_random_movie(client, chat_id):
     buttons = [
         [InlineKeyboardButton(f"📥 {quality}", url=short_link)],
         [
-            InlineKeyboardButton("❓ How to Download", url="https://t.me/your_tutorial_channel"),
-            InlineKeyboardButton("📢 Join Channels", url="https://t.me/your_channel_folder")
+            InlineKeyboardButton("❓ How to Download", url=TUTORIAL_CHANNEL),
+            InlineKeyboardButton("📢 Join Channels", url=JOIN_CHANNELS_LINK)
         ]
     ]
     
@@ -1223,207 +417,482 @@ async def send_random_movie(client, chat_id):
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
-# ====================== USER MESSAGE HANDLER ======================
+# ====================== START COMMAND ======================
 
-@app.on_message(filters.private & ~filters.user(OWNER_IDS) & ~filters.command("start"))
-async def reject_messages(client, message):
+@app.on_message(filters.command("start"))
+async def start(client, message):
     if db.reference(f"banned_users/{message.from_user.id}").get():
         await message.reply("🚫 You are banned from using this bot.")
         return
     
-    await message.reply("❌ Don't Send Me Messages Directly. I'm Only a File Sharing Bot!")
-
-# ====================== COMMAND CLEANUP ======================
-
-async def set_commands():
-    await app.set_bot_commands([
-        BotCommand("start", "Show start message"),
-        BotCommand("batch", "Upload files (Owner)"),
-        BotCommand("broadcast", "Send to all users (Owner)"),
-        BotCommand("broadcast_delete", "Delete a broadcast (Owner)"),
-        BotCommand("stats", "Show bot statistics (Owner)"),
-        BotCommand("file_delete", "Delete a file (Owner)"),
-        BotCommand("add_joined_channel", "Add required channel (Owner)"),
-        BotCommand("delete_joined_channel", "Remove required channel (Owner)")
-    ])
-
-@app.on_message(filters.command(["done", "cancel"]) & filters.user(OWNER_IDS))
-async def handle_actions(client, message):
-    user_id = message.from_user.id
-    if user_id not in user_states:
-        await message.reply("❌ No active operation to complete or cancel.")
-        return
-
-    state = user_states[user_id]
-    action = message.command[0]
-
-    if action == "done":
-        if state["mode"] == "batch":
-            if not state["files"]:
-                await message.reply("❌ No files or text received! Batch canceled.")
-                user_states.pop(user_id, None)
-                return
-
-            unique_id = generate_unique_id()
-            file_data = {
-                "files": state["files"],
-                "uploaded_by": user_id,
-                "deleted": False,
-                "created_at": datetime.now().isoformat()
-            }
-
-            try:
-                db.reference(f"files/{unique_id}").set(file_data)
-            except Exception as e:
-                await message.reply(f"❌ Error saving file: {e}")
-                return
-
-            bot_username = (await client.get_me()).username
-            share_link = f"https://t.me/{bot_username}?start={unique_id}"
+    user = message.from_user
+    await store_user_info(user.id, user.username, user.first_name, user.last_name)
+    
+    if len(message.command) == 1:
+        has_joined = await is_user_joined(client, user.id)
+        
+        if not has_joined:
+            channels_ref = db.reference("channels")
+            channels = channels_ref.get() or {}
+            if not channels:
+                channels = {str(CHANNEL_ID): {"title": "Default Channel", "username": CHANNEL_USERNAME}}
             
-            short_link = shorten_url(share_link) or share_link
+            buttons = []
+            for cid, data in channels.items():
+                if data.get("username"):
+                    url = f"https://t.me/{data['username']}"
+                else:
+                    url = f"https://t.me/c/{str(cid).replace('-100', '')}"
+                buttons.append([InlineKeyboardButton(f"Join {data['title']}", url=url)])
+            
+            buttons.append([InlineKeyboardButton("✅ Verify Join", callback_data="check_join")])
+            
+            await message.reply_photo(
+                photo="AgACAgUAAxkBAAODaC1qWLvvXeuS_6G-CdAZ9ddPfLYAApHAMRsMImlVEq4iRgAB0ucVAAgBAAMCAAN4AAceBA",
+                caption=f"*Hello {user.first_name}*\n\nYou must join our channels to get files",
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode=enums.ParseMode.MARKDOWN
+            )
+        else:
+            await message.reply_photo(
+                photo="AgACAgUAAxkBAAOGaC1qZawX7EK9SP09ZFUJM7_TScAAApLAMRsMImlVWCz45ax3wUAACAEAAwIAA3gABx4E",
+                caption=f"*Hello {user.first_name}*\n\nI am a File Sharing Bot",
+                parse_mode=enums.ParseMode.MARKDOWN
+            )
+    else:
+        unique_id = message.command[1]
+        if '_' in unique_id:
+            batch_id, quality = unique_id.split('_')
+        else:
+            batch_id, quality = unique_id, None
+        
+        batch_data = db.reference(f"batches/{batch_id}").get()
+        if not batch_data or batch_data.get("deleted"):
+            await message.reply("❌ File not found or deleted!")
+            return
+        
+        if quality:
+            files = batch_data["files"].get(quality, [])
+            if not files:
+                await message.reply("❌ No files found for this quality!")
+                return
+            
+            await send_individual_file(client, message.chat.id, files)
+        else:
+            buttons = []
+            for qual in batch_data["files"].keys():
+                buttons.append([InlineKeyboardButton(
+                    f"📥 {qual}", 
+                    url=f"https://t.me/{(await client.get_me()).username}?start={batch_id}_{qual}"
+                )])
+            
+            if batch_data.get("image"):
+                await message.reply_photo(
+                    photo=batch_data["image"]["file_id"],
+                    caption=batch_data["image"]["caption"],
+                    reply_markup=InlineKeyboardMarkup(buttons)
+                )
+            else:
+                await message.reply(
+                    f"🎬 {batch_data['titles'][0]}\n\nSelect quality:",
+                    reply_markup=InlineKeyboardMarkup(buttons)
+                )
+
+# ====================== ADMIN COMMANDS ======================
+
+@app.on_message(filters.command("broadcast") & filters.user(OWNER_IDS))
+async def broadcast_command(client, message):
+    user_id = message.from_user.id
+    user_states[user_id] = {"mode": "broadcast", "content": []}
+    await message.reply(
+        "📢 *Broadcast Mode Activated!*\n\n"
+        "Send me the message or media you want to broadcast to all users.\n"
+        "When finished, send /done to send to all users.\n"
+        "To cancel, send /cancel.",
+        parse_mode=enums.ParseMode.MARKDOWN
+    )
+
+@app.on_message(filters.command("broadcast_delete") & filters.user(OWNER_IDS))
+async def broadcast_delete(client, message):
+    try:
+        broadcasts_ref = db.reference("broadcasts")
+        broadcasts = broadcasts_ref.get() or {}
+        
+        if not broadcasts:
+            await message.reply("ℹ No active broadcasts found.")
+            return
+        
+        if len(message.command) > 1:
+            original_message_id = int(message.command[1])
+            if str(original_message_id) not in broadcasts:
+                await message.reply("❌ No broadcast found with that ID.")
+                return
+            
+            delete_button = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🗑 DELETE THIS BROADCAST", callback_data=f"delete_broadcast_{original_message_id}")]
+            ])
+            
+            broadcast_data = broadcasts[str(original_message_id)]
+            await message.reply(
+                f"📢 Broadcast Message ID: `{original_message_id}`\n\n"
+                f"• Recipients: {len(broadcast_data.get('recipients', []))}\n"
+                f"• Sent at: {broadcast_data.get('timestamp', 'N/A')}\n\n"
+                "Click the button below to delete this broadcast from all users:",
+                reply_markup=delete_button,
+                parse_mode=enums.ParseMode.MARKDOWN
+            )
+            return
+        
+        response = "📢 *Active Broadcasts*\n\n"
+        for msg_id, broadcast_data in broadcasts.items():
+            response += (
+                f"📌 Message ID: `{msg_id}`\n"
+                f"• Recipients: {len(broadcast_data.get('recipients', []))}\n"
+                f"• Sent at: {broadcast_data.get('timestamp', 'N/A')}\n"
+            )
+            
+            delete_button = InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"🗑 Delete Broadcast {msg_id}", callback_data=f"delete_broadcast_{msg_id}")]
+            ])
             
             await message.reply(
-                f"✅ *Batch Upload Complete!*\n\n"
-                f"🔗 Original Link: `{share_link}`\n"
-                f"🪄 Short Link: `{short_link}`\n\n"
-                f"📌 Files will be stored permanently until deleted.",
+                response,
+                reply_markup=delete_button,
                 parse_mode=enums.ParseMode.MARKDOWN
             )
-            user_states.pop(user_id, None)
+            response = ""
+            await asyncio.sleep(0.5)
+        
+    except ValueError:
+        await message.reply("❌ Invalid message ID. Must be a numeric value.")
+    except Exception as e:
+        logger.error(f"Error in broadcast_delete: {e}")
+        await message.reply(f"❌ Error processing broadcast delete: {e}")
 
-        elif state["mode"] == "broadcast":
-            if not state["content"]:
-                await message.reply("❌ No content to broadcast! Operation canceled.")
-                user_states.pop(user_id, None)
-                return
-
-            users_ref = db.reference("users")
-            users = users_ref.get() or {}
-            
-            if not users:
-                await message.reply("❌ No users to broadcast to!")
-                user_states.pop(user_id, None)
-                return
-            
-            total_users = len(users)
-            success = 0
-            failed = 0
-            recipient_ids = []
-            sent_messages_dict = {}  # Store message IDs per user
-            
-            status_msg = await message.reply(f"📢 Starting broadcast to {total_users} users...")
-            
-            # Store the broadcast message first
-            broadcast_id = message.id
-            broadcast_ref = db.reference(f"broadcasts/{broadcast_id}")
-            
-            for user_id in users.keys():
+@app.on_message(filters.command("stats") & filters.user(OWNER_IDS))
+async def stats_command(client, message):
+    try:
+        processing_msg = await message.reply("📊 Gathering statistics, please wait...")
+        
+        users_ref = db.reference("users")
+        users = users_ref.get() or {}
+        total_users = len(users)
+        
+        active_users = 0
+        thirty_days_ago = datetime.now() - timedelta(days=30)
+        for user_data in users.values():
+            last_seen_str = user_data.get("last_seen", "")
+            if last_seen_str:
                 try:
-                    sent_messages = []
-                    for item in state["content"]:
-                        if item["type"] == "text":
-                            sent_msg = await client.send_message(int(user_id), item["content"])
-                            sent_messages.append(str(sent_msg.id))  # Store as string
-                        else:
-                            method = {
-                                "document": client.send_document,
-                                "video": client.send_video,
-                                "photo": client.send_photo,
-                                "audio": client.send_audio
-                            }.get(item["type"])
-                            if method:
-                                sent_msg = await method(
-                                    int(user_id),
-                                    item["file_id"],
-                                    caption=item.get("caption", None)
-                                )
-                                sent_messages.append(str(sent_msg.id))  # Store as string
-                    success += 1
-                    recipient_ids.append(user_id)
-                    sent_messages_dict[str(user_id)] = sent_messages  # Store with string key
-                except Exception as e:
-                    logger.error(f"Error broadcasting to {user_id}: {e}")
-                    failed += 1
-                await asyncio.sleep(0.5)
+                    last_seen = datetime.fromisoformat(last_seen_str)
+                    if last_seen > thirty_days_ago:
+                        active_users += 1
+                except ValueError:
+                    continue
+        
+        batches_ref = db.reference("batches")
+        batches = batches_ref.get() or {}
+        total_batches = len(batches)
+        active_batches = sum(1 for b in batches.values() if not b.get("deleted", False))
+        
+        try:
+            channel = await client.get_chat(CHANNEL_ID)
+            channel_members = channel.members_count if hasattr(channel, 'members_count') else "N/A"
+        except Exception as e:
+            channel_members = f"Error: {str(e)}"
+        
+        banned_users_ref = db.reference("banned_users")
+        banned_users = banned_users_ref.get() or {}
+        total_banned = len(banned_users)
+        
+        channels_ref = db.reference("channels")
+        channels = channels_ref.get() or {}
+        
+        stats_message = f"""
+📊 *Bot Statistics Report*
+
+👥 *Users:*
+• Total Users: `{total_users}`
+• Active Users (last 30 days): `{active_users}`
+• Banned Users: `{total_banned}`
+
+📂 *Files:*
+• Total Batches: `{total_batches}`
+• Active Batches: `{active_batches}`
+• Deleted Batches: `{total_batches - active_batches}`
+
+📢 *Channel Stats:*
+• Main Channel Members: `{channel_members}`
+• Required Channels: `{len(channels)}`
+        """
+        
+        await processing_msg.edit_text(stats_message, parse_mode=enums.ParseMode.MARKDOWN)
+        
+    except Exception as e:
+        logger.error(f"Error generating stats: {e}")
+        await message.reply(f"❌ Error generating statistics: {e}")
+
+@app.on_message(filters.command("file_delete") & filters.user(OWNER_IDS))
+async def file_delete_command(client, message):
+    batches_ref = db.reference("batches")
+    all_batches = batches_ref.get() or {}
+    
+    if not all_batches:
+        await message.reply("❌ No batches found in the database!")
+        return
+    
+    active_batches = [(bid, bdata) for bid, bdata in all_batches.items() if not bdata.get("deleted")]
+    
+    if not active_batches:
+        await message.reply("ℹ No active batches found in database.")
+        return
+    
+    if len(message.command) > 1:
+        query = ' '.join(message.command[1:]).lower()
+        matches = []
+        
+        for batch_id, batch_data in active_batches:
+            if query in batch_id.lower():
+                matches.append((batch_id, batch_data))
+            else:
+                for title in batch_data.get("titles", []):
+                    if query in title.lower():
+                        matches.append((batch_id, batch_data))
+                        break
+        
+        if not matches:
+            await message.reply("❌ No active batches found matching your query.")
+            return
             
-            # Store broadcast info
-            broadcast_ref.set({
-                "sender": message.from_user.id,
-                "timestamp": datetime.now().isoformat(),
-                "recipients": recipient_ids,
-                "content": state["content"],
-                "sent_messages": sent_messages_dict,
-                "status": "completed"
-            })
-            
-            await status_msg.edit_text(
-                f"✅ Broadcast completed!\n\n"
-                f"• Broadcast ID: `{broadcast_id}`\n"
-                f"• Total users: {total_users}\n"
-                f"• Successfully sent: {success}\n"
-                f"• Failed: {failed}\n\n"
-                f"Use `/broadcast_delete {broadcast_id}` to delete this broadcast from all users.",
+        batches_to_show = matches
+    else:
+        batches_to_show = active_batches
+    
+    total_batches = len(batches_to_show)
+    processing_msg = await message.reply(f"⏳ Preparing {total_batches} batches for deletion...")
+    
+    for batch_id, batch_data in batches_to_show:
+        uploader_id = batch_data.get("uploaded_by", "")
+        uploader_info = db.reference(f"users/{uploader_id}").get() or {}
+        uploader_name = uploader_info.get("first_name", "Unknown") + " " + uploader_info.get("last_name", "")
+        uploader_username = f"@{uploader_info.get('username', '')}" if uploader_info.get("username") else "No username"
+        
+        created_at = batch_data.get("created_at", "")
+        try:
+            created_dt = datetime.fromisoformat(created_at)
+            created_str = created_dt.strftime("%Y-%m-%d %H:%M:%S")
+        except:
+            created_str = "Unknown"
+        
+        qualities = batch_data.get("files", {}).keys()
+        file_counts = [f"{q}: {len(files)}" for q, files in batch_data.get("files", {}).items()]
+        
+        response = (
+            f"📁 *Batch Details*\n\n"
+            f"🆔 *Batch ID:* `{batch_id}`\n"
+            f"🕒 *Created:* `{created_str}`\n"
+            f"👤 *Uploader:* {uploader_name} ({uploader_username})\n"
+            f"📌 *Qualities:* {', '.join(qualities)}\n"
+            f"📂 *Files:* {', '.join(file_counts)}\n\n"
+            f"🗑 *Click below to delete this batch permanently*"
+        )
+
+        buttons = InlineKeyboardMarkup([[
+            InlineKeyboardButton("⚠️ DELETE THIS BATCH", callback_data=f"delete_batch_{batch_id}")
+        ]])
+        
+        try:
+            await client.send_message(
+                chat_id=message.chat.id,
+                text=response,
+                reply_markup=buttons,
                 parse_mode=enums.ParseMode.MARKDOWN
             )
-            user_states.pop(user_id, None)
+            await asyncio.sleep(0.3)
+        except Exception as e:
+            logger.error(f"Error sending batch info: {e}")
     
-    elif action == "cancel":
-        user_states.pop(user_id, None)
-        await message.reply("❌ Operation canceled.")
+    await processing_msg.delete()
+    
+    if len(message.command) == 1:
+        await message.reply(f"✅ Showing all {total_batches} active batches. Use `/file_delete <query>` to search for specific batches.")
 
-@app.on_message(filters.private & (filters.media | filters.text) & filters.user(OWNER_IDS))
-async def media_text_handler(client, message):
-    user_id = message.from_user.id
-    state = user_states.get(user_id, {})
-
-    if not state:
-        await message.reply("ℹ Please use /batch or /broadcast first to start uploading.")
+@app.on_message(filters.command("add_joined_channel") & filters.user(OWNER_IDS))
+async def add_joined_channel(client, message):
+    if len(message.command) < 2:
+        await message.reply("❌ Usage: /add_joined_channel <channel_link_or_username>")
         return
 
-    if state["mode"] == "batch":
-        if message.text and not message.text.startswith('/'):
-            state["files"].append({
-                "file_id": None, 
-                "file_name": message.text, 
-                "file_type": "text",
-                "caption": None
-            })
-            await message.reply(f"✅ Text added to batch! Total items: {len(state['files'])}\nSend /done when ready.")
+    try:
+        channel_input = message.command[1].strip()
+        if channel_input.startswith("https://t.me/"):
+            channel_input = channel_input.split("/")[-1]
         
-        elif media := get_media_info(message):
-            state["files"].append(media)
-            reply_text = f"✅ Media added to batch! Total items: {len(state['files'])}"
-            if media["caption"]:
-                reply_text += f"\nCaption: {media['caption']}"
-            reply_text += "\nSend /done when ready."
-            await message.reply(reply_text)
+        chat = await client.get_chat(channel_input)
+        if chat.type not in [enums.ChatType.CHANNEL, enums.ChatType.SUPERGROUP]:
+            await message.reply("❌ Only channels can be added!")
+            return
 
-    elif state["mode"] == "broadcast":
-        if message.text and not message.text.startswith('/'):
-            state["content"].append({
-                "type": "text", 
-                "content": message.text,
-                "caption": None
-            })
-            await message.reply(f"✅ Text added to broadcast! Total items: {len(state['content'])}\nSend /done when ready.")
+        try:
+            bot_member = await client.get_chat_member(chat.id, (await client.get_me()).id)
+            if bot_member.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
+                await message.reply("❌ I must be an admin in this channel!")
+                return
+        except Exception as e:
+            await message.reply(f"❌ Admin check failed: {str(e)}")
+            return
+
+        channels_ref = db.reference("channels")
+        channels_ref.child(str(chat.id)).set({
+            "title": chat.title,
+            "username": chat.username,
+            "added_by": message.from_user.id,
+            "added_at": datetime.now().isoformat()
+        })
+
+        await message.reply(
+            f"✅ Added channel:\n"
+            f"📢 **{chat.title}**\n"
+            f"🆔 `{chat.id}`\n"
+            f"🌐 @{chat.username or 'N/A'}"
+        )
+    except Exception as e:
+        await message.reply(f"❌ Error: {str(e)}")
+
+@app.on_message(filters.command("delete_joined_channel") & filters.user(OWNER_IDS))
+async def delete_joined_channel(client, message):
+    if len(message.command) < 2:
+        await message.reply("❌ Usage: /delete_joined_channel <channel_link_or_id>")
+        return
+
+    try:
+        channel_input = message.command[1].strip()
+        chat = await client.get_chat(channel_input)
         
-        elif media := get_media_info(message):
-            state["content"].append({
-                "type": media["file_type"],
-                "file_id": media["file_id"],
-                "file_name": media["file_name"],
-                "caption": media["caption"]
-            })
-            reply_text = f"✅ Media added to broadcast! Total items: {len(state['content'])}"
-            if media["caption"]:
-                reply_text += f"\nCaption: {media['caption']}"
-            reply_text += "\nSend /done when ready."
-            await message.reply(reply_text)
+        channels_ref = db.reference("channels")
+        channel_ref = channels_ref.child(str(chat.id))
+        
+        if not channel_ref.get():
+            await message.reply("❌ Channel not in list!")
+            return
+
+        channel_ref.delete()
+        await message.reply(f"✅ Removed channel: {chat.title} (ID: {chat.id})")
+    except Exception as e:
+        await message.reply(f"❌ Error: {str(e)}")
+
+# ====================== CALLBACK HANDLERS ======================
+
+@app.on_callback_query(filters.regex("^check_join$"))
+async def handle_check_join(client, callback_query):
+    user_id = callback_query.from_user.id
+    await callback_query.answer("⏳ Checking your channel status...")
+    
+    wait_msg = await callback_query.message.reply("⏳ Please wait while we verify your channel membership...")
+    
+    has_joined = await is_user_joined(client, user_id)
+    
+    if has_joined:
+        await wait_msg.edit_text("✅ Thank you for joining! Now you can access all files.")
+        await callback_query.message.delete()
+        
+        await client.send_photo(
+            chat_id=callback_query.message.chat.id,
+            photo="AgACAgUAAxkBAAOGaC1qZawX7EK9SP09ZFUJM7_TScAAApLAMRsMImlVWCz45ax3wUAACAEAAwIAA3gABx4E",
+            caption=f"*Hello {callback_query.from_user.first_name}*\n\nI am a File Sharing Bot",
+            parse_mode=enums.ParseMode.MARKDOWN
+        )
+    else:
+        await wait_msg.edit_text("❌ You haven't joined all required channels yet. Please join them first!")
+    
+    await asyncio.sleep(5)
+    await wait_msg.delete()
+
+@app.on_callback_query(filters.regex("^delete_broadcast_"))
+async def handle_delete_broadcast(client, callback_query):
+    user_id = callback_query.from_user.id
+    if user_id not in OWNER_IDS:
+        await callback_query.answer("❌ You're not authorized to perform this action!", show_alert=True)
+        return
+    
+    original_message_id = int(callback_query.data.split("_")[2])
+    await callback_query.answer("⏳ Deleting broadcast from all users...")
+    
+    processing_msg = await callback_query.message.reply("🔄 Deleting broadcast messages from users...")
+    
+    broadcast_ref = db.reference(f"broadcasts/{original_message_id}")
+    broadcast_data = broadcast_ref.get()
+    
+    if not broadcast_data:
+        await processing_msg.edit_text("❌ Broadcast data not found!")
+        return
+    
+    recipient_ids = broadcast_data.get("recipients", [])
+    sent_messages_dict = broadcast_data.get("sent_messages", {})
+    total_recipients = len(recipient_ids)
+    success = 0
+    failed = 0
+    
+    for user_id in recipient_ids:
+        try:
+            message_ids = sent_messages_dict.get(str(user_id), [])
+            message_ids = [int(msg_id) for msg_id in message_ids if msg_id is not None]
+            
+            if message_ids:
+                await client.delete_messages(chat_id=int(user_id), message_ids=message_ids)
+                success += 1
+            else:
+                failed += 1
+                logger.warning(f"No valid message IDs found for user {user_id}")
+        except Exception as e:
+            logger.error(f"Could not delete messages for {user_id}: {e}")
+            failed += 1
+        await asyncio.sleep(0.3)
+    
+    result_message = (
+        f"✅ Broadcast message deletion completed!\n\n"
+        f"• Total recipients: {total_recipients}\n"
+        f"• Successfully deleted: {success}\n"
+        f"• Failed: {failed}"
+    )
+    
+    await processing_msg.edit_text(result_message)
+    broadcast_ref.delete()
+    
+    await callback_query.message.edit_text(
+        f"🗑 Broadcast Message ID: `{original_message_id}`\n\n"
+        f"• Deletion completed at: {datetime.now().isoformat()}\n"
+        f"• Successfully deleted from {success} users\n\n"
+        "This broadcast has been fully deleted.",
+        reply_markup=None
+    )
+
+@app.on_callback_query(filters.regex("^delete_batch_"))
+async def handle_delete_batch(client, callback_query):
+    user_id = callback_query.from_user.id
+    if user_id not in OWNER_IDS:
+        await callback_query.answer("❌ Authorization required!", show_alert=True)
+        return
+
+    batch_id = callback_query.data.split("_")[2]
+    batch_ref = db.reference(f"batches/{batch_id}")
+    
+    if not batch_ref.get():
+        await callback_query.answer("❌ Batch already deleted!", show_alert=True)
+        return
+
+    batch_ref.update({"deleted": True, "deleted_at": datetime.now().isoformat()})
+    
+    await callback_query.answer("✅ Batch deleted successfully!", show_alert=True)
+    await callback_query.message.edit_text(
+        f"🗑 *DELETED BATCH*\nID: `{batch_id}`\n\nThis batch is no longer accessible.",
+        reply_markup=None
+    )
+
+# ====================== MESSAGE HANDLERS ======================
 
 @app.on_message(filters.private & ~filters.user(OWNER_IDS) & ~filters.command("start"))
 async def reject_messages(client, message):
-    # Check if user is banned
     if db.reference(f"banned_users/{message.from_user.id}").get():
         await message.reply("🚫 You are banned from using this bot.")
         return
@@ -1438,10 +907,6 @@ async def set_commands():
         BotCommand("batch", "Upload files (Owner)"),
         BotCommand("broadcast", "Send to all users (Owner)"),
         BotCommand("broadcast_delete", "Delete a broadcast (Owner)"),
-        BotCommand("ban", "Ban a user (Owner)"),
-        BotCommand("unban", "Unban a user (Owner)"),
-        BotCommand("users", "List users (Owner)"),
-        BotCommand("shortener", "Shorten URLs (Owner)"),
         BotCommand("stats", "Show bot statistics (Owner)"),
         BotCommand("file_delete", "Delete a file (Owner)"),
         BotCommand("add_joined_channel", "Add required channel (Owner)"),
