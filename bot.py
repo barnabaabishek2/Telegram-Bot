@@ -1119,7 +1119,7 @@ async def finalize_batch(client, message):
 
 # ====================== GROUP SEARCH FUNCTIONALITY ======================
 
-@app.on_message(filters.group & ~filters.command())
+@app.on_message(filters.group & filters.text & ~filters.command(["start", "help"]))
 async def handle_group_search(client, message):
     # Ignore messages from admins and empty messages
     if message.from_user.id in OWNER_IDS or not message.text:
