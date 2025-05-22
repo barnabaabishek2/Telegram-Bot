@@ -11,6 +11,8 @@ import logging
 from datetime import datetime, timedelta
 import requests
 import urllib.parse
+from pyrogram import Client
+app = Client("my_bot")
 
 # Configure logging
 logging.basicConfig(
@@ -1077,13 +1079,10 @@ async def set_commands():
 
 async def main():
     await app.start()
-    print("Bot started!")
     await set_commands()
-    await asyncio.get_event_loop().run_forever()
+    print("Bot started!")
+    await app.idle()  # Keeps the bot running
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Bot stopped.")
-
+    import asyncio
+    asyncio.run(main())
