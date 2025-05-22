@@ -20,36 +20,34 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-BOT_TOKEN = "7911278240:AAHHUKQb-TzknzOApSvhCZMZF-vBg-fPsDA"
-API_ID = 24360857
-API_HASH = "0924b59c45bf69cdfafd14188fb1b778"
-OWNER_IDS = [5891854177]  # Your user ID
-SHORTENER_API = "d2d9a81c236ad681edfbb260cb315628df46cc38"
-SHORTENER_URL = "https://api.gplinks.com/api"
+BOT_TOKEN = os.getenv("BOT_TOKEN", "your_default_bot_token")
+API_ID = int(os.getenv("API_ID", "your_api_id"))
+API_HASH = os.getenv("API_HASH", "your_api_hash")
+OWNER_IDS = [int(x) for x in os.getenv("OWNER_IDS", "your_user_id").split(",")]
+SHORTENER_API = os.getenv("SHORTENER_API", "your_gplinks_api")
+SHORTENER_URL = os.getenv("SHORTENER_URL", "https://api.gplinks.in/api")
+
 # Channel information
-CHANNEL_USERNAME = "@solo_leveling_manhwa_tamil"
-CHANNEL_ID = -1002662584633
-CHANNEL_LINK = "https://t.me/solo_leveling_manhwa_tamil"
-SOURCE_CHANNEL = "https://t.me/mangas_manhwas_tamil"
-TUTORIAL_CHANNEL = "https://t.me/your_tutorial_channel"
-JOIN_CHANNELS_LINK = "https://t.me/your_channels_folder"
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@your_channel")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1001234567890"))
+CHANNEL_LINK = os.getenv("CHANNEL_LINK", "https://t.me/your_channel")
+SOURCE_CHANNEL = os.getenv("SOURCE_CHANNEL", "https://t.me/source_channel")
+TUTORIAL_CHANNEL = os.getenv("TUTORIAL_CHANNEL", "https://t.me/tutorial_channel")
+JOIN_CHANNELS_LINK = os.getenv("JOIN_CHANNELS_LINK", "https://t.me/join_channels_folder")
 
 # Initialize Firebase
 try:
-    firebase_config = os.getenv("FIREBASE_CONFIG")
-    if not firebase_config:
-        raise ValueError("FIREBASE_CONFIG environment variable is not set!")
-    
-    cred = credentials.Certificate(json.loads(firebase_config))
+    firebase_config = json.loads(os.getenv("FIREBASE_CONFIG"))
+    cred = credentials.Certificate(firebase_config)
     firebase_admin.initialize_app(cred, {
-        "databaseURL": "https://movie-or-anime-search-bot-default-rtdb.firebaseio.com"
+        "databaseURL": os.getenv("FIREBASE_DB_URL", "https://your-firebase-app.firebaseio.com")
     })
     logger.info("Firebase initialized successfully!")
 except Exception as e:
     logger.error(f"Firebase initialization error: {e}")
     raise
 
-app = Client("tdafilesharebot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
+app = Client("file_share_bot", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
 
 # User state management
 user_states = {}
@@ -95,22 +93,19 @@ async def check_channel_membership(client, user_id, channel):
 
 async def is_user_joined(client, user_id):
     try:
-        # Get all required channels from Firebase
         channels_ref = db.reference("channels")
         channels = channels_ref.get() or {}
         
-        # If no channels are set, fall back to default channel
         if not channels:
             return await check_channel_membership(client, user_id, CHANNEL_ID)
         
-        # Check membership in all required channels
         for channel_id in channels:
             if not await check_channel_membership(client, user_id, int(channel_id)):
                 return False
         return True
     except Exception as e:
         logger.error(f"Error in is_user_joined: {e}")
-        return True  # Allow access if we can't verify membership
+        return True
 
 async def send_individual_file(client, chat_id, files):
     for file in files:
@@ -359,7 +354,7 @@ async def finalize_batch(client, message):
 
 # ====================== GROUP SEARCH FUNCTIONALITY ======================
 
-@app.on_message(filters.group & ~filters.command)
+@app.on_message(filters.group & ~filters.command())
 async def handle_group_search(client, message):
     if message.from_user.id in OWNER_IDS or not message.text:
         return
@@ -454,11 +449,10 @@ async def send_random_movie(client, chat_id):
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
-# ====================== START COMMAND (ORIGINAL VERSION - NO CHANGES) ======================
+# ====================== START COMMAND (ORIGINAL VERSION) ======================
 
 @app.on_message(filters.command("start"))
 async def start(client, message):
-    # Check if user is banned
     if db.reference(f"banned_users/{message.from_user.id}").get():
         await message.reply("🚫 You are banned from using this bot.")
         return
@@ -881,6 +875,7 @@ async def file_delete_command(client, message):
         qualities = batch_data.get("files", {}).keys()
         file_counts = [f"{q}: {len(files)}" for q, files in batch_data.get("files", {}).items()]
         
+        
         response = (
             f"📁 *Batch Details*\n\n"
             f"🆔 *Batch ID:* `{batch_id}`\n"
@@ -911,6 +906,7 @@ async def file_delete_command(client, message):
     if len(message.command) == 1:
         await message.reply(f"✅ Showing all {total_batches} active batches. Use `/file_delete <query>` to search for specific batches.")
 
+
 @app.on_message(filters.command("add_joined_channel") & filters.user(OWNER_IDS))
 async def add_joined_channel(client, message):
     if len(message.command) < 2:
@@ -921,19 +917,16 @@ async def add_joined_channel(client, message):
         channel_input = message.command[1].strip()
         if channel_input.startswith("https://t.me/"):
             channel_input = channel_input.split("/")[-1]
-        
+
         chat = await client.get_chat(channel_input)
+
         if chat.type not in [enums.ChatType.CHANNEL, enums.ChatType.SUPERGROUP]:
             await message.reply("❌ Only channels can be added!")
             return
 
-        try:
-            bot_member = await client.get_chat_member(chat.id, (await client.get_me()).id)
-            if bot_member.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
-                await message.reply("❌ I must be an admin in this channel!")
-                return
-        except Exception as e:
-            await message.reply(f"❌ Admin check failed: {str(e)}")
+        bot_member = await client.get_chat_member(chat.id, (await client.get_me()).id)
+        if bot_member.status not in [enums.ChatMemberStatus.ADMINISTRATOR, enums.ChatMemberStatus.OWNER]:
+            await message.reply("❌ I must be an admin in this channel!")
             return
 
         channels_ref = db.reference("channels")
@@ -953,6 +946,7 @@ async def add_joined_channel(client, message):
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)}")
 
+
 @app.on_message(filters.command("delete_joined_channel") & filters.user(OWNER_IDS))
 async def delete_joined_channel(client, message):
     if len(message.command) < 2:
@@ -962,10 +956,10 @@ async def delete_joined_channel(client, message):
     try:
         channel_input = message.command[1].strip()
         chat = await client.get_chat(channel_input)
-        
+
         channels_ref = db.reference("channels")
         channel_ref = channels_ref.child(str(chat.id))
-        
+
         if not channel_ref.get():
             await message.reply("❌ Channel not in list!")
             return
@@ -975,6 +969,7 @@ async def delete_joined_channel(client, message):
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)}")
 
+
 # ====================== CALLBACK HANDLERS ======================
 
 @app.on_callback_query(filters.regex("^delete_broadcast_"))
@@ -983,92 +978,87 @@ async def handle_delete_broadcast(client, callback_query):
     if user_id not in OWNER_IDS:
         await callback_query.answer("❌ You're not authorized to perform this action!", show_alert=True)
         return
-    
+
     original_message_id = int(callback_query.data.split("_")[2])
     await callback_query.answer("⏳ Deleting broadcast from all users...")
-    
     processing_msg = await callback_query.message.reply("🔄 Deleting broadcast messages from users...")
-    
+
     broadcast_ref = db.reference(f"broadcasts/{original_message_id}")
     broadcast_data = broadcast_ref.get()
-    
+
     if not broadcast_data:
         await processing_msg.edit_text("❌ Broadcast data not found!")
         return
-    
+
     recipient_ids = broadcast_data.get("recipients", [])
     sent_messages_dict = broadcast_data.get("sent_messages", {})
     total_recipients = len(recipient_ids)
-    success = 0
-    failed = 0
-    
+    success, failed = 0, 0
+
     for user_id in recipient_ids:
         try:
             message_ids = sent_messages_dict.get(str(user_id), [])
-            message_ids = [int(msg_id) for msg_id in message_ids if msg_id is not None]
-            
+            message_ids = [int(mid) for mid in message_ids if mid is not None]
             if message_ids:
                 await client.delete_messages(chat_id=int(user_id), message_ids=message_ids)
                 success += 1
             else:
                 failed += 1
-                logger.warning(f"No valid message IDs found for user {user_id}")
         except Exception as e:
-            logger.error(f"Could not delete messages for {user_id}: {e}")
+            logger.error(f"Delete failed for {user_id}: {e}")
             failed += 1
         await asyncio.sleep(0.3)
-    
-    result_message = (
-        f"✅ Broadcast message deletion completed!\n\n"
-        f"• Total recipients: {total_recipients}\n"
-        f"• Successfully deleted: {success}\n"
+
+    await processing_msg.edit_text(
+        f"✅ Broadcast deletion done!\n\n"
+        f"• Total: {total_recipients}\n"
+        f"• Deleted: {success}\n"
         f"• Failed: {failed}"
     )
-    
-    await processing_msg.edit_text(result_message)
-    broadcast_ref.delete()
-    
+
     await callback_query.message.edit_text(
         f"🗑 Broadcast Message ID: `{original_message_id}`\n\n"
-        f"• Deletion completed at: {datetime.now().isoformat()}\n"
-        f"• Successfully deleted from {success} users\n\n"
-        "This broadcast has been fully deleted.",
+        f"• Deletion complete at: {datetime.now().isoformat()}\n"
+        f"• Deleted from {success} users.\n\n"
+        "Broadcast removed.",
         reply_markup=None
     )
+    broadcast_ref.delete()
+
 
 @app.on_callback_query(filters.regex("^delete_batch_"))
 async def handle_delete_batch(client, callback_query):
-    user_id = callback_query.from_user.id
-    if user_id not in OWNER_IDS:
+    if callback_query.from_user.id not in OWNER_IDS:
         await callback_query.answer("❌ Authorization required!", show_alert=True)
         return
 
     batch_id = callback_query.data.split("_")[2]
     batch_ref = db.reference(f"batches/{batch_id}")
-    
+
     if not batch_ref.get():
         await callback_query.answer("❌ Batch already deleted!", show_alert=True)
         return
 
     batch_ref.update({"deleted": True, "deleted_at": datetime.now().isoformat()})
-    
+
     await callback_query.answer("✅ Batch deleted successfully!", show_alert=True)
     await callback_query.message.edit_text(
         f"🗑 *DELETED BATCH*\nID: `{batch_id}`\n\nThis batch is no longer accessible.",
         reply_markup=None
     )
 
-# ====================== MESSAGE HANDLERS ======================
+
+# ====================== MESSAGE HANDLER ======================
 
 @app.on_message(filters.private & ~filters.user(OWNER_IDS) & ~filters.command("start"))
 async def reject_messages(client, message):
     if db.reference(f"banned_users/{message.from_user.id}").get():
         await message.reply("🚫 You are banned from using this bot.")
-        return
-    
-    await message.reply("❌ Don't Send Me Messages Directly. I'm Only a File Sharing Bot!")
+    else:
+        await message.reply("❌ Don't send me messages directly. I'm only a file-sharing bot!")
 
-# ====================== BOT SETUP ======================
+
+# ====================== SET BOT COMMANDS ======================
 
 async def set_commands():
     await app.set_bot_commands([
@@ -1082,11 +1072,18 @@ async def set_commands():
         BotCommand("delete_joined_channel", "Remove required channel (Owner)")
     ])
 
-app.start()
-print("Bot started!")
-app.loop.run_until_complete(set_commands())
 
-try:
-    asyncio.get_event_loop().run_forever()
-except KeyboardInterrupt:
-    print("Bot stopped!")
+# ====================== BOT STARTUP ======================
+
+async def main():
+    await app.start()
+    print("Bot started!")
+    await set_commands()
+    await asyncio.get_event_loop().run_forever()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Bot stopped.")
+
