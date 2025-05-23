@@ -28,12 +28,12 @@ SHORTENER_API = os.getenv("SHORTENER_API", "your_gplinks_api")
 SHORTENER_URL = os.getenv("SHORTENER_URL", "https://api.gplinks.in/api")
 
 # Channel information
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@your_channel")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1001234567890"))
-CHANNEL_LINK = os.getenv("CHANNEL_LINK", "https://t.me/your_channel")
-SOURCE_CHANNEL = os.getenv("SOURCE_CHANNEL", "https://t.me/source_channel")
-TUTORIAL_CHANNEL = os.getenv("TUTORIAL_CHANNEL", "https://t.me/tutorial_channel")
-JOIN_CHANNELS_LINK = os.getenv("JOIN_CHANNELS_LINK", "https://t.me/join_channels_folder")
+CHANNEL_USERNAME = "@solo_leveling_manhwa_tamil"
+CHANNEL_ID = -1002662584633
+CHANNEL_LINK = "https://t.me/solo_leveling_manhwa_tamil"
+SOURCE_CHANNEL = "https://t.me/mangas_manhwas_tamil"
+TUTORIAL_CHANNEL = "https://t.me/your_tutorial_channel"
+JOIN_CHANNELS_LINK = "https://t.me/your_channels_folder"
 
 # Initialize Firebase
 try:
@@ -354,7 +354,7 @@ async def finalize_batch(client, message):
 
 # ====================== GROUP SEARCH FUNCTIONALITY ======================
 
-@app.on_message(filters.group & ~filters.command())
+@app.on_message(filters.group & ~filters.command)
 async def handle_group_search(client, message):
     if message.from_user.id in OWNER_IDS or not message.text:
         return
