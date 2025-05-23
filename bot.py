@@ -20,27 +20,27 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-BOT_TOKEN = "7911278240:AAHHUKQb-TzknzOApSvhCZMZF-vBg-fPsDA"
-API_ID = 24360857
-API_HASH = "0924b59c45bf69cdfafd14188fb1b778"
-OWNER_IDS = [5891854177]  # Your user ID
-SHORTENER_API = "d2d9a81c236ad681edfbb260cb315628df46cc38"
-SHORTENER_URL = "https://api.gplinks.com/api"
+BOT_TOKEN = os.getenv("BOT_TOKEN", "your_default_bot_token")
+API_ID = int(os.getenv("API_ID", "your_api_id"))
+API_HASH = os.getenv("API_HASH", "your_api_hash")
+OWNER_IDS = [int(x) for x in os.getenv("OWNER_IDS", "your_user_id").split(",")]
+SHORTENER_API = os.getenv("SHORTENER_API", "your_gplinks_api")
+SHORTENER_URL = os.getenv("SHORTENER_URL", "https://api.gplinks.in/api")
 
 # Channel information
-CHANNEL_USERNAME = "@solo_leveling_manhwa_tamil"
-CHANNEL_ID = -1002662584633
-CHANNEL_LINK = "https://t.me/solo_leveling_manhwa_tamil"
-SOURCE_CHANNEL = "https://t.me/mangas_manhwas_tamil"
-TUTORIAL_CHANNEL = "https://t.me/your_tutorial_channel"
-JOIN_CHANNELS_LINK = "https://t.me/your_channels_folder"
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@your_channel")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1001234567890"))
+CHANNEL_LINK = os.getenv("CHANNEL_LINK", "https://t.me/your_channel")
+SOURCE_CHANNEL = os.getenv("SOURCE_CHANNEL", "https://t.me/source_channel")
+TUTORIAL_CHANNEL = os.getenv("TUTORIAL_CHANNEL", "https://t.me/tutorial_channel")
+JOIN_CHANNELS_LINK = os.getenv("JOIN_CHANNELS_LINK", "https://t.me/join_channels_folder")
 
 # Initialize Firebase
 try:
     firebase_config = json.loads(os.getenv("FIREBASE_CONFIG"))
     cred = credentials.Certificate(firebase_config)
     firebase_admin.initialize_app(cred, {
-        "databaseURL": os.getenv("FIREBASE_DB_URL", "https://movie-or-anime-search-bot-default-rtdb.firebaseio.com")
+        "databaseURL": os.getenv("FIREBASE_DB_URL", "https://your-firebase-app.firebaseio.com")
     })
     logger.info("Firebase initialized successfully!")
 except Exception as e:
